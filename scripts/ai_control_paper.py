@@ -27,8 +27,8 @@ from control_arena.settings.apps.task.apps_trusted_editor import (
 )
 from inspect_ai import eval_set
 
-from src.metrics import create_protocol_results_dataframe
-from src.plotting import plot_safety_vs_usefulness_by_protocol
+from trav_ai_control.metrics import create_protocol_results_dataframe
+from trav_ai_control.plotting import plot_safety_vs_usefulness_by_protocol
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 ATTACK_PROMPT_PATH = PROMPTS_DIR / "attack_system_prompt.txt"
@@ -349,7 +349,7 @@ def run_evaluation(
 @click.option(
     "--limit",
     type=int,
-    default=50,
+    default=5,
     help="Evaluation limit per protocol and mode combination (honest & attack)",
 )
 @click.option(
