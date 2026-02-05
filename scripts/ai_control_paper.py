@@ -26,8 +26,9 @@ from control_arena.settings.apps.task.apps_trusted_editor import (
     update_edited_state_from_untrusted_state_apps,
 )
 from inspect_ai import eval_set
-from metrics import create_protocol_results_dataframe
-from plotting import plot_safety_vs_usefulness_by_protocol
+
+from src.metrics import create_protocol_results_dataframe
+from src.plotting import plot_safety_vs_usefulness_by_protocol
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 ATTACK_PROMPT_PATH = PROMPTS_DIR / "attack_system_prompt.txt"
