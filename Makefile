@@ -53,7 +53,7 @@ run-paper:  ## Run AI Control paper replication with default config
 	uv run python scripts/ai_control_paper.py configs/ai_control_paper.yaml
 
 summary:  ## Generate HTML summary (use LOG_DIR=path/to/logs)
-	uv run python scripts/generate_html_summary.py $(LOG_DIR)
+	uv run python -m trav_ai_control.summary $(LOG_DIR)
 
 # Development workflow
 check: lint typecheck test  ## Run all checks (lint, typecheck, test)

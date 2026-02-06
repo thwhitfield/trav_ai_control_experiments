@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -34,6 +34,52 @@ class ModelConfig:
 
 
 @dataclass
+class SandboxConfig:
+    """Sandbox and parallelism settings for inspect_ai evaluation."""
+
+    max_sandboxes: int = 20
+    max_tasks: int = 2
+    max_samples: int = 20
+
+
+@dataclass
+class MonitorSettings:
+    """Monitor configuration."""
+
+    # Number of samples for ensemble monitor
+    num_samples: int = 10
+
+
+@dataclass
+class SettingConfig:
+    """Task setting configuration."""
+
+    # Setting type: currently only "apps" is supported
+    type: Literal["apps"] = "apps"
+    # Whether tasks have backdoor solutions
+    has_backdoor_solution: bool = True
+
+
+@dataclass
+class PolicyConfig:
+    """Policy configuration for untrusted model behavior."""
+
+    # If True, use pre-computed solutions from the dataset (faster, deterministic)
+    # If False, have the untrusted model generate solutions itself (slower, tests model capability)
+    use_dataset_solutions: bool = True
+
+
+@dataclass
+class BaselineConfig:
+    """Baseline protocol configuration."""
+
+    # Run trusted-only baseline (upper bound on safety, lower bound on usefulness)
+    run_trusted_only: bool = True
+    # Run upfront audit baseline (includes untrusted-only honest as usefulness upper bound)
+    run_upfront_audit: bool = True
+
+
+@dataclass
 class ProtocolSettings:
     """Protocol configuration."""
 
@@ -43,6 +89,8 @@ class ProtocolSettings:
     run_trusted_monitor_defer: bool = True
     run_untrusted_monitor_defer: bool = True
     run_trusted_monitor_edit: bool = True
+    # Baseline protocols
+    baselines: BaselineConfig = field(default_factory=BaselineConfig)
 
 
 @dataclass
@@ -63,15 +111,28 @@ class CacheConfig:
 
 
 @dataclass
+class PlotConfig:
+    """Plot configuration."""
+
+    title: str = "AI Control: Safety vs Usefulness Across Protocols"
+    dpi: int = 150
+
+
+@dataclass
 class ExperimentConfig:
     """Root configuration object combining all settings."""
 
     experiment: ExperimentMetadata = field(default_factory=ExperimentMetadata)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
     models: ModelConfig = field(default_factory=ModelConfig)
+    sandbox: SandboxConfig = field(default_factory=SandboxConfig)
+    monitor: MonitorSettings = field(default_factory=MonitorSettings)
+    setting: SettingConfig = field(default_factory=SettingConfig)
+    policy: PolicyConfig = field(default_factory=PolicyConfig)
     protocols: ProtocolSettings = field(default_factory=ProtocolSettings)
     prompts: PromptPaths = field(default_factory=PromptPaths)
     cache: CacheConfig = field(default_factory=CacheConfig)
+    plot: PlotConfig = field(default_factory=PlotConfig)
 
 
 def load_config(config_path: Path | str | None) -> ExperimentConfig:
@@ -98,6 +159,13 @@ def load_config(config_path: Path | str | None) -> ExperimentConfig:
 
 def _parse_config(data: dict[str, Any]) -> ExperimentConfig:
     """Parse raw YAML data into ExperimentConfig."""
+    # Parse protocols with nested baselines
+    protocols_data = data.get("protocols", {})
+    baselines_data = protocols_data.pop("baselines", {}) if protocols_data else {}
+    protocols = _parse_dataclass(ProtocolSettings, protocols_data)
+    if baselines_data:
+        protocols.baselines = _parse_dataclass(BaselineConfig, baselines_data)
+
     return ExperimentConfig(
         experiment=_parse_dataclass(
             ExperimentMetadata, data.get("experiment", {})
@@ -106,9 +174,14 @@ def _parse_config(data: dict[str, Any]) -> ExperimentConfig:
             EvaluationConfig, data.get("evaluation", {})
         ),
         models=_parse_dataclass(ModelConfig, data.get("models", {})),
-        protocols=_parse_dataclass(ProtocolSettings, data.get("protocols", {})),
+        sandbox=_parse_dataclass(SandboxConfig, data.get("sandbox", {})),
+        monitor=_parse_dataclass(MonitorSettings, data.get("monitor", {})),
+        setting=_parse_dataclass(SettingConfig, data.get("setting", {})),
+        policy=_parse_dataclass(PolicyConfig, data.get("policy", {})),
+        protocols=protocols,
         prompts=_parse_prompt_paths(data.get("prompts", {})),
         cache=_parse_dataclass(CacheConfig, data.get("cache", {})),
+        plot=_parse_dataclass(PlotConfig, data.get("plot", {})),
     )
 
 

@@ -239,7 +239,7 @@ def generate_task_report(m: EvalTaskMetrics) -> str:
     lines.append(f"\nFile: {m.file_path.name}")
 
     # Basic info
-    lines.append(f"\nTask Information:")
+    lines.append("\nTask Information:")
     lines.append(f"  Task Name:  {m.task_name}")
     lines.append(f"  Model:      {m.model}")
     lines.append(f"  Status:     {m.status}")
@@ -249,7 +249,7 @@ def generate_task_report(m: EvalTaskMetrics) -> str:
         lines.append(f"  Sandbox:    {m.sandbox_type}")
 
     # Timing
-    lines.append(f"\nTiming:")
+    lines.append("\nTiming:")
     if m.started_at:
         lines.append(f"  Started:    {m.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
     if m.completed_at:
@@ -259,14 +259,14 @@ def generate_task_report(m: EvalTaskMetrics) -> str:
         lines.append(f"  Duration:   {int(mins)}m {secs:.1f}s ({m.duration_seconds:.1f}s total)")
 
     # Samples
-    lines.append(f"\nSamples:")
+    lines.append("\nSamples:")
     lines.append(f"  Completed:  {m.completed_samples}/{m.total_samples}")
     if m.total_samples > 0:
         completion_rate = (m.completed_samples / m.total_samples) * 100
         lines.append(f"  Completion: {completion_rate:.1f}%")
 
     # Token usage
-    lines.append(f"\nToken Usage (Aggregate):")
+    lines.append("\nToken Usage (Aggregate):")
     lines.append(f"  Input tokens:     {m.total_token_usage.input_tokens:,}")
     lines.append(f"  Output tokens:    {m.total_token_usage.output_tokens:,}")
     lines.append(f"  Cached tokens:    {m.total_token_usage.cached_input_tokens:,}")
@@ -279,7 +279,7 @@ def generate_task_report(m: EvalTaskMetrics) -> str:
 
     # Per-model breakdown
     if m.token_usage:
-        lines.append(f"\nToken Usage by Model:")
+        lines.append("\nToken Usage by Model:")
         for model_name, usage in m.token_usage.items():
             lines.append(f"\n  {model_name}:")
             lines.append(f"    Input:     {usage.input_tokens:,}")
@@ -290,7 +290,7 @@ def generate_task_report(m: EvalTaskMetrics) -> str:
 
     # Scores
     if m.scores:
-        lines.append(f"\nScores:")
+        lines.append("\nScores:")
         for score_name, value in sorted(m.scores.items()):
             lines.append(f"  {score_name}: {value:.4f}")
 

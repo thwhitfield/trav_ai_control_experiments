@@ -18,6 +18,16 @@ from trav_ai_control.metrics import (
     create_protocol_results_dataframe,
 )
 from trav_ai_control.plotting import plot_safety_vs_usefulness_by_protocol
+from trav_ai_control.summary import (
+    RunConfig,
+    TaskSummary,
+    generate_html_report,
+    generate_markdown_report,
+    load_run_config,
+)
+from trav_ai_control.summary import (
+    analyze_log_directory as analyze_for_html,
+)
 
 __all__ = [
     # Analysis
@@ -36,4 +46,11 @@ __all__ = [
     "create_protocol_results_dataframe",
     # Plotting
     "plot_safety_vs_usefulness_by_protocol",
+    # Summary
+    "RunConfig",
+    "TaskSummary",
+    "analyze_for_html",
+    "generate_html_report",
+    "generate_markdown_report",
+    "load_run_config",
 ]

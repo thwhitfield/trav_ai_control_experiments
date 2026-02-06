@@ -26,17 +26,37 @@ from inspect_ai.log import EvalLog, read_eval_log
 class RunConfig:
     """Configuration used for the evaluation run."""
 
+    # Experiment metadata
     experiment_name: str | None = None
     experiment_description: str | None = None
+    # Models
     trusted_model: str | None = None
     untrusted_model: str | None = None
+    # Evaluation settings
     limit: int | None = None
     audit_budget: float | None = None
+    # Sandbox settings
+    max_sandboxes: int | None = None
+    max_tasks: int | None = None
+    max_samples: int | None = None
+    # Monitor settings
+    monitor_num_samples: int | None = None
+    # Setting
+    setting_type: str | None = None
+    has_backdoor_solution: bool | None = None
+    # Policy
+    use_dataset_solutions: bool | None = None
+    # Protocols
     defer_thresholds: list[float] | None = None
     run_trusted_monitor_defer: bool | None = None
     run_untrusted_monitor_defer: bool | None = None
     run_trusted_monitor_edit: bool | None = None
+    run_trusted_only: bool | None = None
+    run_upfront_audit: bool | None = None
+    # Cache
     cache_enabled: bool | None = None
+    # Plot
+    plot_title: str | None = None
 
 
 def load_run_config(log_dir: Path) -> RunConfig | None:
@@ -50,12 +70,27 @@ def load_run_config(log_dir: Path) -> RunConfig | None:
             data = yaml.safe_load(f) or {}
 
         return RunConfig(
+            # Experiment metadata
             experiment_name=data.get("experiment", {}).get("name"),
             experiment_description=data.get("experiment", {}).get("description"),
+            # Models
             trusted_model=data.get("models", {}).get("trusted"),
             untrusted_model=data.get("models", {}).get("untrusted"),
+            # Evaluation settings
             limit=data.get("evaluation", {}).get("limit"),
             audit_budget=data.get("evaluation", {}).get("audit_budget"),
+            # Sandbox settings
+            max_sandboxes=data.get("sandbox", {}).get("max_sandboxes"),
+            max_tasks=data.get("sandbox", {}).get("max_tasks"),
+            max_samples=data.get("sandbox", {}).get("max_samples"),
+            # Monitor settings
+            monitor_num_samples=data.get("monitor", {}).get("num_samples"),
+            # Setting
+            setting_type=data.get("setting", {}).get("type"),
+            has_backdoor_solution=data.get("setting", {}).get("has_backdoor_solution"),
+            # Policy
+            use_dataset_solutions=data.get("policy", {}).get("use_dataset_solutions"),
+            # Protocols
             defer_thresholds=data.get("protocols", {}).get("defer_thresholds"),
             run_trusted_monitor_defer=data.get("protocols", {}).get(
                 "run_trusted_monitor_defer"
@@ -66,7 +101,16 @@ def load_run_config(log_dir: Path) -> RunConfig | None:
             run_trusted_monitor_edit=data.get("protocols", {}).get(
                 "run_trusted_monitor_edit"
             ),
+            run_trusted_only=data.get("protocols", {}).get("baselines", {}).get(
+                "run_trusted_only"
+            ),
+            run_upfront_audit=data.get("protocols", {}).get("baselines", {}).get(
+                "run_upfront_audit"
+            ),
+            # Cache
             cache_enabled=data.get("cache", {}).get("enabled"),
+            # Plot
+            plot_title=data.get("plot", {}).get("title"),
         )
     except Exception:
         return None
@@ -103,10 +147,10 @@ class TaskSummary:
 def extract_task_summary(log: EvalLog, file_path: Path) -> TaskSummary:
     """Extract a summary from an eval log."""
     # Get metadata
-    metadata = log.eval.metadata if log.eval else {}
-    protocol_name = metadata.get("protocol_name", "unknown")
-    defer_threshold = metadata.get("defer_threshold")
-    eval_mode = metadata.get("mode", "unknown")
+    metadata = log.eval.metadata if log.eval else None
+    protocol_name = metadata.get("protocol_name", "unknown") if metadata else "unknown"
+    defer_threshold = metadata.get("defer_threshold") if metadata else None
+    eval_mode = metadata.get("mode", "unknown") if metadata else "unknown"
 
     # Status
     status = log.status
@@ -136,10 +180,16 @@ def extract_task_summary(log: EvalLog, file_path: Path) -> TaskSummary:
         except (ValueError, TypeError):
             pass
 
-    # Token usage by model
+    # Token usage by model role
     trusted_input = trusted_output = trusted_cached = 0
     untrusted_input = untrusted_output = untrusted_cached = 0
     trusted_calls = untrusted_calls = 0
+
+    # Build a mapping from model name to role using model_roles from eval spec
+    model_to_role: dict[str, str] = {}
+    if log.eval and log.eval.model_roles:
+        for role, model_config in log.eval.model_roles.items():
+            model_to_role[model_config.model] = role
 
     if log.stats and log.stats.model_usage:
         for model_name, usage in log.stats.model_usage.items():
@@ -147,22 +197,16 @@ def extract_task_summary(log: EvalLog, file_path: Path) -> TaskSummary:
             output_tokens = getattr(usage, "output_tokens", 0) or 0
             cached_tokens = getattr(usage, "input_tokens_cache_read", 0) or 0
 
-            # Determine if this is trusted or untrusted based on model name
-            # Trusted models typically contain "gpt" or similar
-            # Untrusted models typically contain "claude" or similar
-            model_lower = model_name.lower()
-            if "gpt" in model_lower or "o1" in model_lower or "o3" in model_lower:
+            # Determine role from model_roles mapping
+            role = model_to_role.get(model_name, "unknown")
+
+            if role == "trusted":
                 trusted_input += input_tokens
                 trusted_output += output_tokens
                 trusted_cached += cached_tokens
                 trusted_calls += 1
-            elif "claude" in model_lower or "anthropic" in model_lower:
-                untrusted_input += input_tokens
-                untrusted_output += output_tokens
-                untrusted_cached += cached_tokens
-                untrusted_calls += 1
             else:
-                # Default to untrusted for unknown models
+                # Default to untrusted for "untrusted" role or unknown models
                 untrusted_input += input_tokens
                 untrusted_output += output_tokens
                 untrusted_cached += cached_tokens
@@ -329,6 +373,7 @@ def generate_html_report(
     config_html = ""
     if config:
         config_rows = []
+        # Models
         if config.trusted_model:
             config_rows.append(
                 f"<tr><td>Trusted Model</td><td><code>{config.trusted_model}</code></td></tr>"
@@ -337,20 +382,58 @@ def generate_html_report(
             config_rows.append(
                 f"<tr><td>Untrusted Model</td><td><code>{config.untrusted_model}</code></td></tr>"
             )
+        # Evaluation settings
         if config.limit is not None:
             config_rows.append(
                 f"<tr><td>Sample Limit</td><td>{config.limit}</td></tr>"
             )
         if config.audit_budget is not None:
             config_rows.append(
-                f"<tr><td>Audit Budget</td><td>{config.audit_budget * 100:.0f}%</td></tr>"
+                f"<tr><td>Audit Budget</td><td>{config.audit_budget:.1f}%</td></tr>"
             )
+        # Sandbox settings
+        sandbox_parts = []
+        if config.max_sandboxes is not None:
+            sandbox_parts.append(f"sandboxes={config.max_sandboxes}")
+        if config.max_tasks is not None:
+            sandbox_parts.append(f"tasks={config.max_tasks}")
+        if config.max_samples is not None:
+            sandbox_parts.append(f"samples={config.max_samples}")
+        if sandbox_parts:
+            config_rows.append(
+                f"<tr><td>Sandbox Limits</td><td>{', '.join(sandbox_parts)}</td></tr>"
+            )
+        # Monitor settings
+        if config.monitor_num_samples is not None:
+            config_rows.append(
+                f"<tr><td>Monitor Samples</td><td>{config.monitor_num_samples}</td></tr>"
+            )
+        # Setting
+        if config.setting_type:
+            setting_str = config.setting_type
+            if config.has_backdoor_solution:
+                setting_str += " (with backdoors)"
+            config_rows.append(
+                f"<tr><td>Task Setting</td><td>{setting_str}</td></tr>"
+            )
+        # Policy
+        if config.use_dataset_solutions is not None:
+            policy_str = "Dataset solutions" if config.use_dataset_solutions else "Model-generated solutions"
+            config_rows.append(
+                f"<tr><td>Solution Source</td><td>{policy_str}</td></tr>"
+            )
+        # Thresholds
         if config.defer_thresholds:
             thresholds_str = ", ".join(str(t) for t in config.defer_thresholds)
             config_rows.append(
                 f"<tr><td>Defer Thresholds</td><td>{thresholds_str}</td></tr>"
             )
+        # Protocols
         protocols = []
+        if config.run_trusted_only:
+            protocols.append("Trusted Only")
+        if config.run_upfront_audit:
+            protocols.append("Upfront Audit")
         if config.run_trusted_monitor_defer:
             protocols.append("Trusted Monitor Defer")
         if config.run_untrusted_monitor_defer:
@@ -361,6 +444,7 @@ def generate_html_report(
             config_rows.append(
                 f"<tr><td>Protocols</td><td>{', '.join(protocols)}</td></tr>"
             )
+        # Cache
         if config.cache_enabled is not None:
             config_rows.append(
                 f"<tr><td>Caching</td><td>{'Enabled' if config.cache_enabled else 'Disabled'}</td></tr>"
@@ -711,18 +795,49 @@ def generate_markdown_report(
         lines.append("")
         lines.append("| Setting | Value |")
         lines.append("|---------|-------|")
+        # Models
         if config.trusted_model:
             lines.append(f"| Trusted Model | `{config.trusted_model}` |")
         if config.untrusted_model:
             lines.append(f"| Untrusted Model | `{config.untrusted_model}` |")
+        # Evaluation settings
         if config.limit is not None:
             lines.append(f"| Sample Limit | {config.limit} |")
         if config.audit_budget is not None:
-            lines.append(f"| Audit Budget | {config.audit_budget * 100:.0f}% |")
+            lines.append(f"| Audit Budget | {config.audit_budget:.1f}% |")
+        # Sandbox settings
+        sandbox_parts = []
+        if config.max_sandboxes is not None:
+            sandbox_parts.append(f"sandboxes={config.max_sandboxes}")
+        if config.max_tasks is not None:
+            sandbox_parts.append(f"tasks={config.max_tasks}")
+        if config.max_samples is not None:
+            sandbox_parts.append(f"samples={config.max_samples}")
+        if sandbox_parts:
+            lines.append(f"| Sandbox Limits | {', '.join(sandbox_parts)} |")
+        # Monitor settings
+        if config.monitor_num_samples is not None:
+            lines.append(f"| Monitor Samples | {config.monitor_num_samples} |")
+        # Setting
+        if config.setting_type:
+            setting_str = config.setting_type
+            if config.has_backdoor_solution:
+                setting_str += " (with backdoors)"
+            lines.append(f"| Task Setting | {setting_str} |")
+        # Policy
+        if config.use_dataset_solutions is not None:
+            policy_str = "Dataset solutions" if config.use_dataset_solutions else "Model-generated solutions"
+            lines.append(f"| Solution Source | {policy_str} |")
+        # Thresholds
         if config.defer_thresholds:
             thresholds_str = ", ".join(str(t) for t in config.defer_thresholds)
             lines.append(f"| Defer Thresholds | {thresholds_str} |")
+        # Protocols
         protocols = []
+        if config.run_trusted_only:
+            protocols.append("Trusted Only")
+        if config.run_upfront_audit:
+            protocols.append("Upfront Audit")
         if config.run_trusted_monitor_defer:
             protocols.append("Trusted Monitor Defer")
         if config.run_untrusted_monitor_defer:
@@ -731,6 +846,7 @@ def generate_markdown_report(
             protocols.append("Trusted Monitor Edit")
         if protocols:
             lines.append(f"| Protocols | {', '.join(protocols)} |")
+        # Cache
         if config.cache_enabled is not None:
             lines.append(
                 f"| Caching | {'Enabled' if config.cache_enabled else 'Disabled'} |"
