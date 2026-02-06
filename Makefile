@@ -1,4 +1,4 @@
-.PHONY: install install-dev sync lint format typecheck test clean run help
+.PHONY: install install-dev sync lint format typecheck test clean run help summary
 
 # Default Python version
 PYTHON_VERSION ?= 3.13
@@ -51,6 +51,9 @@ run:  ## Run with config file (use CONFIG=path/to/config.yaml)
 
 run-paper:  ## Run AI Control paper replication with default config
 	uv run python scripts/ai_control_paper.py configs/ai_control_paper.yaml
+
+summary:  ## Generate HTML summary (use LOG_DIR=path/to/logs)
+	uv run python scripts/generate_html_summary.py $(LOG_DIR)
 
 # Development workflow
 check: lint typecheck test  ## Run all checks (lint, typecheck, test)

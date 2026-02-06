@@ -440,6 +440,27 @@ def main(config_path: Path) -> None:
     # Print the analysis report
     print("\n" + report)
 
+    # Generate HTML and Markdown summaries
+    from scripts.generate_html_summary import analyze_log_directory as analyze_for_html
+    from scripts.generate_html_summary import (
+        generate_html_report,
+        generate_markdown_report,
+    )
+
+    summaries = analyze_for_html(log_dir_path)
+
+    html = generate_html_report(log_dir_path, summaries)
+    html_path = log_dir_path / "summary.html"
+    with open(html_path, "w") as f:
+        f.write(html)
+    print(f"Generated HTML summary: {html_path}")
+
+    markdown = generate_markdown_report(log_dir_path, summaries)
+    md_path = log_dir_path / "summary.md"
+    with open(md_path, "w") as f:
+        f.write(markdown)
+    print(f"Generated Markdown summary: {md_path}")
+
     print("\nEvaluation complete!")
     print(f"Total samples: {len(raw_df)}")
     if len(raw_df) > 0:
