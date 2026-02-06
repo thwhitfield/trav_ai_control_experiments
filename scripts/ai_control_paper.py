@@ -3,13 +3,17 @@
 This example replicates the "AI Control: Improving Safety Despite Intentional Subversion" paper
 evaluation using APPS backdooring tasks. It demonstrates defer-to-trusted protocols with
 various threshold configurations to explore the safety-usefulness tradeoff.
+
+Usage:
+    python scripts/ai_control_paper.py configs/ai_control_paper.yaml
 """
 
-from dataclasses import dataclass
+import argparse
+import sys
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
-import click
 import pandas as pd
 from control_arena import ControlAgent, EvalMode
 from control_arena.analysis import samples_df
@@ -33,7 +37,6 @@ from trav_ai_control.config import (
     ExperimentConfig,
     config_to_flat_dict,
     load_config,
-    merge_cli_overrides,
 )
 from trav_ai_control.metrics import create_protocol_results_dataframe
 from trav_ai_control.plotting import plot_safety_vs_usefulness_by_protocol
@@ -391,111 +394,7 @@ def build_internal_configs(
     return policy_config, monitor_config, protocol_config
 
 
-@click.command()
-@click.option(
-    "--config",
-    "config_path",
-    type=click.Path(exists=True, path_type=Path),
-    default=None,
-    help="Path to YAML configuration file. CLI arguments override config file values.",
-)
-@click.option(
-    "--limit",
-    type=int,
-    default=None,
-    help="Evaluation limit per protocol and mode combination (honest & attack)",
-)
-@click.option(
-    "--audit-budget",
-    type=float,
-    default=None,
-    help="Audit budget percentage (e.g., '1.0' means 1%% audit budget)",
-)
-@click.option(
-    "--defer-thresholds",
-    type=str,
-    default=None,
-    help="Comma-separated list of defer threshold values for dtt and te protocols (normalised to [0.0, 1.0] range)",
-)
-@click.option(
-    "--cache/--no-cache",
-    default=None,
-    help="Whether to enable caching. This enables both caching of LLM responses for the same input and solution scoring for the same solution and input combinations.",
-)
-@click.option(
-    "--log-dir",
-    type=str,
-    default=None,
-    help="Log directory. If a fixed log-dir value is used for multiple runs with the same configuration, any existing .eval files produced in previous runs will be re-used.",
-)
-@click.option(
-    "--trusted-model",
-    type=str,
-    default=None,
-    help="Trusted model for evaluation",
-)
-@click.option(
-    "--untrusted-model",
-    type=str,
-    default=None,
-    help="Untrusted model for evaluation",
-)
-@click.option(
-    "--attack-prompt-path",
-    type=click.Path(exists=True, path_type=Path),
-    default=None,
-    help="Path to attack system prompt file (default: use built-in prompts/attack_system_prompt.txt)",
-)
-@click.option(
-    "--monitor-prompt-path",
-    type=click.Path(exists=True, path_type=Path),
-    default=None,
-    help="Path to monitor prompt file (default: use built-in prompts/monitor_prompt.txt)",
-)
-@click.option(
-    "--honest-prompt-path",
-    type=click.Path(exists=True, path_type=Path),
-    default=None,
-    help="Path to honest system prompt file (default: use built-in prompts/honest_system_prompt.txt)",
-)
-@click.option(
-    "--run-trusted-monitor-defer/--skip-trusted-monitor-defer",
-    default=None,
-    help="Whether to run trusted monitoring + defer to trusted protocols",
-)
-@click.option(
-    "--run-untrusted-monitor-defer/--skip-untrusted-monitor-defer",
-    default=None,
-    help="Whether to run untrusted monitoring + defer to trusted protocols",
-)
-@click.option(
-    "--run-trusted-monitor-edit/--skip-trusted-monitor-edit",
-    default=None,
-    help="Whether to run trusted monitoring + defer to trusted editing protocols",
-)
-@click.option(
-    "--mlflow/--no-mlflow",
-    "mlflow_enabled",
-    default=None,
-    help="Enable/disable MLflow tracking (overrides config file)",
-)
-def main(
-    config_path: Path | None,
-    limit: int | None,
-    audit_budget: float | None,
-    defer_thresholds: str | None,
-    cache: bool | None,
-    log_dir: str | None,
-    trusted_model: str | None,
-    untrusted_model: str | None,
-    attack_prompt_path: Path | None,
-    monitor_prompt_path: Path | None,
-    honest_prompt_path: Path | None,
-    run_trusted_monitor_defer: bool | None,
-    run_untrusted_monitor_defer: bool | None,
-    run_trusted_monitor_edit: bool | None,
-    mlflow_enabled: bool | None,
-):
+def main(config_path: Path) -> None:
     """Run AI Control paper replication evaluation.
 
     This implements the key protocols from the AI Control paper:
@@ -504,37 +403,11 @@ def main(
     - Untrusted monitoring + defer to trusted (threshold sweep)
     - Trusted monitoring + defer to trusted editing (threshold sweep)
 
-    Configuration can be provided via YAML file (--config) and/or CLI arguments.
-    CLI arguments take precedence over config file values.
+    Args:
+        config_path: Path to YAML configuration file.
     """
-    # Load config from file (or use defaults)
+    # Load config from file
     config = load_config(config_path)
-
-    # Parse defer thresholds if provided via CLI
-    parsed_defer_thresholds = None
-    if defer_thresholds is not None:
-        parsed_defer_thresholds = [
-            float(t.strip()) for t in defer_thresholds.split(",") if t.strip()
-        ]
-
-    # Merge CLI overrides
-    config = merge_cli_overrides(
-        config,
-        limit=limit,
-        audit_budget=audit_budget,
-        defer_thresholds=parsed_defer_thresholds,
-        cache=cache,
-        log_dir=log_dir,
-        trusted_model=trusted_model,
-        untrusted_model=untrusted_model,
-        attack_prompt_path=attack_prompt_path,
-        monitor_prompt_path=monitor_prompt_path,
-        honest_prompt_path=honest_prompt_path,
-        run_trusted_monitor_defer=run_trusted_monitor_defer,
-        run_untrusted_monitor_defer=run_untrusted_monitor_defer,
-        run_trusted_monitor_edit=run_trusted_monitor_edit,
-        mlflow_enabled=mlflow_enabled,
-    )
 
     # Generate log_dir if not specified
     effective_log_dir = config.evaluation.log_dir
@@ -559,7 +432,6 @@ def main(
     policy_config, monitor_config, protocol_config = build_internal_configs(config)
 
     # Create MLflow config with run name matching log directory
-    from dataclasses import replace
     mlflow_config = replace(config.mlflow, run_name=run_name)
 
     # Run with tracking context
@@ -631,4 +503,27 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Run AI Control paper replication evaluation.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    python scripts/ai_control_paper.py configs/ai_control_paper.yaml
+    python scripts/ai_control_paper.py configs/my_custom_config.yaml
+
+All configuration is done via the YAML config file. See configs/ai_control_paper.yaml
+for the default configuration and available options.
+        """,
+    )
+    parser.add_argument(
+        "config",
+        type=Path,
+        help="Path to YAML configuration file",
+    )
+    args = parser.parse_args()
+
+    if not args.config.exists():
+        print(f"Error: Config file not found: {args.config}", file=sys.stderr)
+        sys.exit(1)
+
+    main(args.config)

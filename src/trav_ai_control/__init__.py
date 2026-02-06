@@ -12,7 +12,6 @@ from trav_ai_control.config import (
     ExperimentConfig,
     config_to_flat_dict,
     load_config,
-    merge_cli_overrides,
 )
 from trav_ai_control.metrics import (
     AuditResult,
@@ -37,7 +36,6 @@ __all__ = [
     # Config
     "ExperimentConfig",
     "load_config",
-    "merge_cli_overrides",
     "config_to_flat_dict",
     # Metrics
     "AuditResult",

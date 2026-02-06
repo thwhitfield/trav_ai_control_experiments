@@ -49,17 +49,11 @@ clean:  ## Clean build artifacts and caches
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 
-run:  ## Run the AI control paper experiment (use ARGS for additional arguments)
-	uv run python scripts/ai_control_paper.py $(ARGS)
-
-run-config:  ## Run with config file (use CONFIG=path/to/config.yaml ARGS="--limit 5")
-	uv run python scripts/ai_control_paper.py --config $(CONFIG) $(ARGS)
+run:  ## Run with config file (use CONFIG=path/to/config.yaml)
+	uv run python scripts/ai_control_paper.py $(CONFIG)
 
 run-paper:  ## Run AI Control paper replication with default config
-	uv run python scripts/ai_control_paper.py --config configs/ai_control_paper.yaml $(ARGS)
-
-run-quick:  ## Run a quick test with minimal samples (trusted monitor defer only)
-	uv run python scripts/ai_control_paper.py --config configs/ai_control_paper.yaml --limit 5 --defer-thresholds "0.2,0.5,0.8" --skip-untrusted-monitor-defer --skip-trusted-monitor-edit
+	uv run python scripts/ai_control_paper.py configs/ai_control_paper.yaml
 
 mlflow-ui:  ## Start MLflow UI (default port 5000)
 	uv run mlflow ui --port 5000
