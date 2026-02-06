@@ -8,7 +8,8 @@ dependencies = [
     "control-arena>=13.5.1",
     "inspect-ai==0.3.164",
     "ipykernel>=7.1.0",
-    "pandas>=3.0.0",
+    "pandas>=2.0.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -16,6 +17,9 @@ dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
     "pytest>=8.0.0",
+]
+tracking = [
+    "mlflow>=2.15.0",
 ]
 
 [build-system]

@@ -1,7 +1,10 @@
-.PHONY: install install-dev sync lint format typecheck test clean run help
+.PHONY: install install-dev install-tracking sync lint format typecheck test clean run help
 
 # Default Python version
-PYTHON_VERSION ?= 3.11
+PYTHON_VERSION ?= 3.13
+
+# Default config file
+CONFIG ?= configs/ai_control_paper.yaml
 
 help:  ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -11,6 +14,9 @@ install:  ## Install dependencies with uv
 
 install-dev:  ## Install with dev dependencies
 	uv sync --all-extras
+
+install-tracking:  ## Install with MLflow tracking support
+	uv sync --extra tracking
 
 sync:  ## Sync environment with lockfile
 	uv sync
@@ -46,8 +52,17 @@ clean:  ## Clean build artifacts and caches
 run:  ## Run the AI control paper experiment (use ARGS for additional arguments)
 	uv run python scripts/ai_control_paper.py $(ARGS)
 
+run-config:  ## Run with config file (use CONFIG=path/to/config.yaml ARGS="--limit 5")
+	uv run python scripts/ai_control_paper.py --config $(CONFIG) $(ARGS)
+
+run-paper:  ## Run AI Control paper replication with default config
+	uv run python scripts/ai_control_paper.py --config configs/ai_control_paper.yaml $(ARGS)
+
 run-quick:  ## Run a quick test with minimal samples (trusted monitor defer only)
-	uv run python scripts/ai_control_paper.py --limit 5 --defer-thresholds "0.2,0.5,0.8" --skip-untrusted-monitor-defer --skip-trusted-monitor-edit
+	uv run python scripts/ai_control_paper.py --config configs/ai_control_paper.yaml --limit 5 --defer-thresholds "0.2,0.5,0.8" --skip-untrusted-monitor-defer --skip-trusted-monitor-edit
+
+mlflow-ui:  ## Start MLflow UI (default port 5000)
+	uv run mlflow ui --port 5000
 
 # Development workflow
 check: lint typecheck test  ## Run all checks (lint, typecheck, test)

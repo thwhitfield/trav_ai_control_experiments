@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 import click
+import pandas as pd
 from control_arena import ControlAgent, EvalMode
 from control_arena.analysis import samples_df
 from control_arena.eval import ControlEvalConfig, get_control_task_product
@@ -27,8 +28,18 @@ from control_arena.settings.apps.task.apps_trusted_editor import (
 )
 from inspect_ai import eval_set
 
+from trav_ai_control.config import (
+    ExperimentConfig,
+    config_to_flat_dict,
+    load_config,
+    merge_cli_overrides,
+)
 from trav_ai_control.metrics import create_protocol_results_dataframe
 from trav_ai_control.plotting import plot_safety_vs_usefulness_by_protocol
+from trav_ai_control.tracking import (
+    log_protocol_metrics,
+    tracking_context,
+)
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 ATTACK_PROMPT_PATH = PROMPTS_DIR / "attack_system_prompt.txt"
@@ -279,8 +290,12 @@ def run_evaluation(
     policy_config: PolicyConfig,
     monitor_config: MonitorConfig,
     protocol_config: ProtocolConfig,
-):
-    """Run AI Control evaluation with all protocols from the paper."""
+) -> tuple[pd.DataFrame, pd.DataFrame, Path]:
+    """Run AI Control evaluation with all protocols from the paper.
+
+    Returns:
+        Tuple of (samples_df, results_df, plot_path)
+    """
     # Get honest prompt for eval config
     honest_system_prompt = policy_config.honest_prompt
     # ======= Setup Evaluation =======
@@ -342,98 +357,143 @@ def run_evaluation(
     fig.savefig(plot_path.as_posix(), dpi=150, bbox_inches="tight")
     print(f"Saved plot to {plot_path.as_posix()}")
 
-    return df
+    # Save results CSV
+    results_csv_path = Path(log_dir) / "results.csv"
+    results_df.to_csv(results_csv_path, index=False)
+    print(f"Saved results to {results_csv_path.as_posix()}")
+
+    return df, results_df, plot_path
+
+
+def build_internal_configs(
+    config: ExperimentConfig,
+) -> tuple[PolicyConfig, MonitorConfig, ProtocolConfig]:
+    """Build internal config objects from ExperimentConfig."""
+    policy_config = PolicyConfig(
+        cache_run=config.cache.enabled,
+        attack_prompt_path=config.prompts.attack,
+        edit_prompt_path=config.prompts.edit,
+        honest_prompt_path=config.prompts.honest,
+    )
+
+    monitor_config = MonitorConfig(
+        monitor_prompt_path=config.prompts.monitor,
+    )
+
+    protocol_config = ProtocolConfig(
+        defer_thresholds=config.protocols.defer_thresholds,
+        run_trusted_monitor_defer=config.protocols.run_trusted_monitor_defer,
+        run_untrusted_monitor_defer=config.protocols.run_untrusted_monitor_defer,
+        run_trusted_monitor_edit=config.protocols.run_trusted_monitor_edit,
+    )
+
+    return policy_config, monitor_config, protocol_config
 
 
 @click.command()
 @click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Path to YAML configuration file. CLI arguments override config file values.",
+)
+@click.option(
     "--limit",
     type=int,
-    default=5,
+    default=None,
     help="Evaluation limit per protocol and mode combination (honest & attack)",
 )
 @click.option(
     "--audit-budget",
     type=float,
-    default=1.0,
-    help="Audit budget percentage (e.g., '1.0' means 1% audit budget)",
+    default=None,
+    help="Audit budget percentage (e.g., '1.0' means 1%% audit budget)",
 )
 @click.option(
     "--defer-thresholds",
     type=str,
-    default="0.0,0.2,0.5,0.8,1.0",
+    default=None,
     help="Comma-separated list of defer threshold values for dtt and te protocols (normalised to [0.0, 1.0] range)",
 )
 @click.option(
     "--cache/--no-cache",
-    default=True,
-    help="Whether to enable caching. This enables both caching of LLM responses for the same input and solution scoring for the same solution and input combinations. Both of these forms of caching can significantly speed up repeated runs over the same samples, which happens a lot in this example due to the use of the same models, monitors and policies within different protocols. e.g. If defer-to-trused doesn't defer for a particular sample, this is exactly equivalent to the same sample in the untrusted-only baseline run and we can reuse the same LLM response and scoring result to save time. Separately, if you also set a fixed log-dir and re-run this script then any existing eval files will be re-used because of the use of inspects eval_set function. This can save even more time when performing further analysis of an existing run.",
+    default=None,
+    help="Whether to enable caching. This enables both caching of LLM responses for the same input and solution scoring for the same solution and input combinations.",
 )
 @click.option(
     "--log-dir",
     type=str,
     default=None,
-    help="Log directory. If a fixed log-dir value is used for multiple runs with the same configuration, any existing .eval files produced in previous runs will be re-used. This can save significant time if performing further analysis of results. (default: auto-generate timestamp-based dir)",
+    help="Log directory. If a fixed log-dir value is used for multiple runs with the same configuration, any existing .eval files produced in previous runs will be re-used.",
 )
 @click.option(
     "--trusted-model",
     type=str,
-    default="openai/gpt-4.1-mini-2025-04-14",
+    default=None,
     help="Trusted model for evaluation",
 )
 @click.option(
     "--untrusted-model",
     type=str,
-    default="anthropic/claude-sonnet-4-20250514",
+    default=None,
     help="Untrusted model for evaluation",
 )
 @click.option(
     "--attack-prompt-path",
-    type=str,
+    type=click.Path(exists=True, path_type=Path),
     default=None,
     help="Path to attack system prompt file (default: use built-in prompts/attack_system_prompt.txt)",
 )
 @click.option(
     "--monitor-prompt-path",
-    type=str,
+    type=click.Path(exists=True, path_type=Path),
     default=None,
     help="Path to monitor prompt file (default: use built-in prompts/monitor_prompt.txt)",
 )
 @click.option(
     "--honest-prompt-path",
-    type=str,
+    type=click.Path(exists=True, path_type=Path),
     default=None,
     help="Path to honest system prompt file (default: use built-in prompts/honest_system_prompt.txt)",
 )
 @click.option(
     "--run-trusted-monitor-defer/--skip-trusted-monitor-defer",
-    default=True,
-    help="Whether to run trusted monitoring + defer to trusted protocols (default: True)",
+    default=None,
+    help="Whether to run trusted monitoring + defer to trusted protocols",
 )
 @click.option(
     "--run-untrusted-monitor-defer/--skip-untrusted-monitor-defer",
-    default=True,
-    help="Whether to run untrusted monitoring + defer to trusted protocols (default: True)",
+    default=None,
+    help="Whether to run untrusted monitoring + defer to trusted protocols",
 )
 @click.option(
     "--run-trusted-monitor-edit/--skip-trusted-monitor-edit",
-    default=True,
-    help="Whether to run trusted monitoring + defer to trusted editing protocols (default: True)",
+    default=None,
+    help="Whether to run trusted monitoring + defer to trusted editing protocols",
+)
+@click.option(
+    "--mlflow/--no-mlflow",
+    "mlflow_enabled",
+    default=None,
+    help="Enable/disable MLflow tracking (overrides config file)",
 )
 def main(
-    limit: int,
-    audit_budget: float,
-    defer_thresholds: str,
-    cache: bool,
+    config_path: Path | None,
+    limit: int | None,
+    audit_budget: float | None,
+    defer_thresholds: str | None,
+    cache: bool | None,
     log_dir: str | None,
-    trusted_model: str,
-    untrusted_model: str,
-    attack_prompt_path: str | None,
-    monitor_prompt_path: str | None,
-    honest_prompt_path: str | None,
-    run_trusted_monitor_defer: bool,
-    run_untrusted_monitor_defer: bool,
-    run_trusted_monitor_edit: bool,
+    trusted_model: str | None,
+    untrusted_model: str | None,
+    attack_prompt_path: Path | None,
+    monitor_prompt_path: Path | None,
+    honest_prompt_path: Path | None,
+    run_trusted_monitor_defer: bool | None,
+    run_untrusted_monitor_defer: bool | None,
+    run_trusted_monitor_edit: bool | None,
+    mlflow_enabled: bool | None,
 ):
     """Run AI Control paper replication evaluation.
 
@@ -442,59 +502,97 @@ def main(
     - Trusted monitoring + defer to trusted (threshold sweep)
     - Untrusted monitoring + defer to trusted (threshold sweep)
     - Trusted monitoring + defer to trusted editing (threshold sweep)
+
+    Configuration can be provided via YAML file (--config) and/or CLI arguments.
+    CLI arguments take precedence over config file values.
     """
-    # Parse defer threshold values
-    threshold_list = [
-        float(t.strip()) for t in defer_thresholds.split(",") if t.strip()
-    ]
+    # Load config from file (or use defaults)
+    config = load_config(config_path)
 
-    if log_dir is None:
-        datetime_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_dir = f"logs/ai_control_paper_{datetime_str}"
-        print(f"Logging to {log_dir} (auto-generated)")
-    else:
-        print(f"Logging to {log_dir}")
+    # Parse defer thresholds if provided via CLI
+    parsed_defer_thresholds = None
+    if defer_thresholds is not None:
+        parsed_defer_thresholds = [
+            float(t.strip()) for t in defer_thresholds.split(",") if t.strip()
+        ]
 
-    print(f"Running with audit budget: {audit_budget}%")
-    print(f"Defer thresholds: {threshold_list}")
-    print(f"Trusted model: {trusted_model}")
-    print(f"Untrusted model: {untrusted_model}")
-
-    # Create configuration objects
-    policy_config = PolicyConfig(
-        cache_run=cache,
-        attack_prompt_path=Path(attack_prompt_path) if attack_prompt_path else None,
-        edit_prompt_path=None,  # Will use default from __post_init__
-        honest_prompt_path=Path(honest_prompt_path) if honest_prompt_path else None,
-    )
-
-    monitor_config = MonitorConfig(
-        monitor_prompt_path=Path(monitor_prompt_path) if monitor_prompt_path else None,
-    )
-
-    protocol_config = ProtocolConfig(
-        defer_thresholds=threshold_list,
+    # Merge CLI overrides
+    config = merge_cli_overrides(
+        config,
+        limit=limit,
+        audit_budget=audit_budget,
+        defer_thresholds=parsed_defer_thresholds,
+        cache=cache,
+        log_dir=log_dir,
+        trusted_model=trusted_model,
+        untrusted_model=untrusted_model,
+        attack_prompt_path=attack_prompt_path,
+        monitor_prompt_path=monitor_prompt_path,
+        honest_prompt_path=honest_prompt_path,
         run_trusted_monitor_defer=run_trusted_monitor_defer,
         run_untrusted_monitor_defer=run_untrusted_monitor_defer,
         run_trusted_monitor_edit=run_trusted_monitor_edit,
+        mlflow_enabled=mlflow_enabled,
     )
 
-    samples_df = run_evaluation(
-        trusted_model=trusted_model,
-        untrusted_model=untrusted_model,
-        limit=limit,
-        log_dir=log_dir,
-        audit_budget=audit_budget,
-        policy_config=policy_config,
-        monitor_config=monitor_config,
-        protocol_config=protocol_config,
-    )
+    # Generate log_dir if not specified
+    effective_log_dir = config.evaluation.log_dir
+    if effective_log_dir is None:
+        datetime_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        effective_log_dir = f"logs/ai_control_paper_{datetime_str}"
+        print(f"Logging to {effective_log_dir} (auto-generated)")
+    else:
+        print(f"Logging to {effective_log_dir}")
+
+    print(f"Running with audit budget: {config.evaluation.audit_budget}%")
+    print(f"Defer thresholds: {config.protocols.defer_thresholds}")
+    print(f"Trusted model: {config.models.trusted}")
+    print(f"Untrusted model: {config.models.untrusted}")
+    if config.mlflow.enabled:
+        print(f"MLflow tracking: enabled (experiment: {config.mlflow.experiment_name})")
+
+    # Build internal config objects
+    policy_config, monitor_config, protocol_config = build_internal_configs(config)
+
+    # Run with tracking context
+    with tracking_context(config.mlflow) as tracker:
+        # Log all config parameters
+        tracker.log_params(config_to_flat_dict(config))
+
+        # Log config file as artifact
+        tracker.log_config_file(config_path)
+
+        # Set experiment tags
+        tags = {"experiment_type": config.experiment.name}
+        for tag in config.experiment.tags:
+            tags[f"tag.{tag}"] = "true"
+        tracker.set_tags(tags)
+
+        # Run evaluation
+        raw_df, results_df, plot_path = run_evaluation(
+            trusted_model=config.models.trusted,
+            untrusted_model=config.models.untrusted,
+            limit=config.evaluation.limit,
+            log_dir=effective_log_dir,
+            audit_budget=config.evaluation.audit_budget,
+            policy_config=policy_config,
+            monitor_config=monitor_config,
+            protocol_config=protocol_config,
+        )
+
+        # Log metrics to MLflow
+        log_protocol_metrics(tracker, results_df)
+
+        # Log artifacts
+        tracker.log_artifact(plot_path, "plots")
+        results_csv_path = Path(effective_log_dir) / "results.csv"
+        tracker.log_artifact(results_csv_path, "results")
 
     print("\nEvaluation complete!")
-    print(f"Total samples: {len(samples_df)}")
-    if len(samples_df) > 0:
-        print(f"Protocols evaluated: {sorted(samples_df['protocol_name'].unique())}")
-        print(f"Results and plots saved to: {log_dir}")
+    print(f"Total samples: {len(raw_df)}")
+    if len(raw_df) > 0:
+        print(f"Protocols evaluated: {sorted(raw_df['protocol_name'].unique())}")
+        print(f"Results and plots saved to: {effective_log_dir}")
 
 
 if __name__ == "__main__":
