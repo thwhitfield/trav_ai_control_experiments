@@ -544,18 +544,25 @@ def main(
     else:
         print(f"Logging to {effective_log_dir}")
 
+    # Extract run name from log_dir for MLflow (e.g., "ai_control_paper_20260206_091848")
+    run_name = config.mlflow.run_name or Path(effective_log_dir).name
+
     print(f"Running with audit budget: {config.evaluation.audit_budget}%")
     print(f"Defer thresholds: {config.protocols.defer_thresholds}")
     print(f"Trusted model: {config.models.trusted}")
     print(f"Untrusted model: {config.models.untrusted}")
     if config.mlflow.enabled:
-        print(f"MLflow tracking: enabled (experiment: {config.mlflow.experiment_name})")
+        print(f"MLflow tracking: enabled (experiment: {config.mlflow.experiment_name}, run: {run_name})")
 
     # Build internal config objects
     policy_config, monitor_config, protocol_config = build_internal_configs(config)
 
+    # Create MLflow config with run name matching log directory
+    from dataclasses import replace
+    mlflow_config = replace(config.mlflow, run_name=run_name)
+
     # Run with tracking context
-    with tracking_context(config.mlflow) as tracker:
+    with tracking_context(mlflow_config) as tracker:
         # Log all config parameters
         tracker.log_params(config_to_flat_dict(config))
 
