@@ -35,8 +35,8 @@ def plot_safety_vs_usefulness_by_protocol(
         # Plot with error bars
         assert isinstance(protocol_name, str)
         plt.errorbar(
-            protocol_df["usefulness"],
             protocol_df["safety"],
+            protocol_df["usefulness"],
             label=protocol_name.replace("_", " ").title(),
             marker="o",
             markersize=6,
@@ -46,7 +46,7 @@ def plot_safety_vs_usefulness_by_protocol(
             capthick=1,
         )
 
-        # Add audit budget labels to points
+        # Add defer threshold labels to points
         for _, row in protocol_df.iterrows():
             if row.get("defer_threshold") is None or pd.isna(
                 row.get("defer_threshold")
@@ -54,7 +54,7 @@ def plot_safety_vs_usefulness_by_protocol(
                 continue
             plt.annotate(
                 f"{row['defer_threshold']:.1f}",
-                (row["usefulness"], row["safety"]),
+                (row["safety"], row["usefulness"]),
                 xytext=(3, 3),
                 textcoords="offset points",
                 fontsize=8,
@@ -62,8 +62,8 @@ def plot_safety_vs_usefulness_by_protocol(
                 color=color,
             )
 
-    plt.xlabel("Usefulness (scaled)")
-    plt.ylabel("Safety")
+    plt.xlabel("Safety")
+    plt.ylabel("Usefulness (scaled)")
     plt.title(title)
     plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.grid(True, alpha=0.3)
