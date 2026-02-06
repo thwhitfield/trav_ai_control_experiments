@@ -46,8 +46,8 @@ clean:  ## Clean build artifacts and caches
 run:  ## Run the AI control paper experiment (use ARGS for additional arguments)
 	uv run python scripts/ai_control_paper.py $(ARGS)
 
-run-quick:  ## Run a quick test with minimal samples
-	uv run python scripts/ai_control_paper.py --limit 5 --defer-thresholds "0.5"
+run-quick:  ## Run a quick test with minimal samples (trusted monitor defer only)
+	uv run python scripts/ai_control_paper.py --limit 5 --defer-thresholds "0.2,0.5,0.8" --skip-untrusted-monitor-defer --skip-trusted-monitor-edit
 
 # Development workflow
 check: lint typecheck test  ## Run all checks (lint, typecheck, test)
