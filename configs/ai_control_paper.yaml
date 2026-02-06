@@ -10,7 +10,7 @@ experiment:
     - "backdoor-detection"
 
 evaluation:
-  limit: 20
+  limit: 5
   audit_budget: 1.0
   log_dir: null # Auto-generate timestamp-based directory
 

@@ -1,5 +1,13 @@
 """AI Control experiments package."""
 
+from trav_ai_control.analysis import (
+    EvalTaskMetrics,
+    analyze_and_report,
+    analyze_log_directory,
+    generate_summary_report,
+    generate_task_report,
+    metrics_to_dataframe,
+)
 from trav_ai_control.config import (
     ExperimentConfig,
     config_to_flat_dict,
@@ -19,6 +27,13 @@ from trav_ai_control.tracking import (
 )
 
 __all__ = [
+    # Analysis
+    "EvalTaskMetrics",
+    "analyze_log_directory",
+    "analyze_and_report",
+    "generate_summary_report",
+    "generate_task_report",
+    "metrics_to_dataframe",
     # Config
     "ExperimentConfig",
     "load_config",

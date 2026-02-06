@@ -28,6 +28,7 @@ from control_arena.settings.apps.task.apps_trusted_editor import (
 )
 from inspect_ai import eval_set
 
+from trav_ai_control.analysis import analyze_and_report
 from trav_ai_control.config import (
     ExperimentConfig,
     config_to_flat_dict,
@@ -594,6 +595,33 @@ def main(
         tracker.log_artifact(plot_path, "plots")
         results_csv_path = Path(effective_log_dir) / "results.csv"
         tracker.log_artifact(results_csv_path, "results")
+
+        # Run analysis on eval files
+        log_dir_path = Path(effective_log_dir)
+        metrics, report = analyze_and_report(log_dir_path, save_csv=True, detailed=True)
+
+        # Print the analysis report
+        print("\n" + report)
+
+        # Log analysis metrics to MLflow
+        if metrics:
+            total_input = sum(m.total_token_usage.input_tokens for m in metrics)
+            total_output = sum(m.total_token_usage.output_tokens for m in metrics)
+            total_cached = sum(m.total_token_usage.cached_input_tokens for m in metrics)
+            total_duration = sum(m.duration_seconds or 0 for m in metrics)
+
+            tracker.log_metrics({
+                "analysis.total_input_tokens": total_input,
+                "analysis.total_output_tokens": total_output,
+                "analysis.total_cached_tokens": total_cached,
+                "analysis.total_duration_seconds": total_duration,
+                "analysis.num_eval_files": len(metrics),
+            })
+
+            # Log eval_metrics.csv as artifact
+            eval_metrics_path = log_dir_path / "eval_metrics.csv"
+            if eval_metrics_path.exists():
+                tracker.log_artifact(eval_metrics_path, "analysis")
 
     print("\nEvaluation complete!")
     print(f"Total samples: {len(raw_df)}")
