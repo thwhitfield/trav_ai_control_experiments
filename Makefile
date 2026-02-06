@@ -1,4 +1,4 @@
-.PHONY: install install-dev install-tracking sync lint format typecheck test clean run help
+.PHONY: install install-dev sync lint format typecheck test clean run help
 
 # Default Python version
 PYTHON_VERSION ?= 3.13
@@ -14,9 +14,6 @@ install:  ## Install dependencies with uv
 
 install-dev:  ## Install with dev dependencies
 	uv sync --all-extras
-
-install-tracking:  ## Install with MLflow tracking support
-	uv sync --extra tracking
 
 sync:  ## Sync environment with lockfile
 	uv sync
@@ -54,9 +51,6 @@ run:  ## Run with config file (use CONFIG=path/to/config.yaml)
 
 run-paper:  ## Run AI Control paper replication with default config
 	uv run python scripts/ai_control_paper.py configs/ai_control_paper.yaml
-
-mlflow-ui:  ## Start MLflow UI (default port 5000)
-	uv run mlflow ui --port 5000
 
 # Development workflow
 check: lint typecheck test  ## Run all checks (lint, typecheck, test)

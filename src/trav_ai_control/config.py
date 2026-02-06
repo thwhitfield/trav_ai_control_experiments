@@ -63,17 +63,6 @@ class CacheConfig:
 
 
 @dataclass
-class MLflowConfig:
-    """MLflow tracking configuration."""
-
-    enabled: bool = False
-    tracking_uri: str | None = None
-    experiment_name: str = "ai_control_experiments"
-    run_name: str | None = None
-    log_artifacts: bool = True
-
-
-@dataclass
 class ExperimentConfig:
     """Root configuration object combining all settings."""
 
@@ -83,7 +72,6 @@ class ExperimentConfig:
     protocols: ProtocolSettings = field(default_factory=ProtocolSettings)
     prompts: PromptPaths = field(default_factory=PromptPaths)
     cache: CacheConfig = field(default_factory=CacheConfig)
-    mlflow: MLflowConfig = field(default_factory=MLflowConfig)
 
 
 def load_config(config_path: Path | str | None) -> ExperimentConfig:
@@ -121,7 +109,6 @@ def _parse_config(data: dict[str, Any]) -> ExperimentConfig:
         protocols=_parse_dataclass(ProtocolSettings, data.get("protocols", {})),
         prompts=_parse_prompt_paths(data.get("prompts", {})),
         cache=_parse_dataclass(CacheConfig, data.get("cache", {})),
-        mlflow=_parse_dataclass(MLflowConfig, data.get("mlflow", {})),
     )
 
 
@@ -146,53 +133,3 @@ def _parse_prompt_paths(data: dict[str, Any]) -> PromptPaths:
         monitor=Path(data["monitor"]) if data.get("monitor") else None,
         edit=Path(data["edit"]) if data.get("edit") else None,
     )
-
-
-def config_to_flat_dict(config: ExperimentConfig) -> dict[str, Any]:
-    """Flatten config to dict for MLflow parameter logging.
-
-    Returns dict with dotted keys like 'models.trusted', 'protocols.defer_thresholds'
-    """
-    result: dict[str, Any] = {}
-
-    # Experiment metadata
-    result["experiment.name"] = config.experiment.name
-    result["experiment.description"] = config.experiment.description
-    result["experiment.tags"] = ",".join(config.experiment.tags)
-
-    # Evaluation config
-    result["evaluation.limit"] = config.evaluation.limit
-    result["evaluation.audit_budget"] = config.evaluation.audit_budget
-    result["evaluation.log_dir"] = config.evaluation.log_dir or "auto"
-
-    # Models
-    result["models.trusted"] = config.models.trusted
-    result["models.untrusted"] = config.models.untrusted
-
-    # Protocols
-    result["protocols.defer_thresholds"] = ",".join(
-        str(t) for t in config.protocols.defer_thresholds
-    )
-    result["protocols.run_trusted_monitor_defer"] = (
-        config.protocols.run_trusted_monitor_defer
-    )
-    result["protocols.run_untrusted_monitor_defer"] = (
-        config.protocols.run_untrusted_monitor_defer
-    )
-    result["protocols.run_trusted_monitor_edit"] = (
-        config.protocols.run_trusted_monitor_edit
-    )
-
-    # Prompts (paths as strings)
-    result["prompts.attack"] = str(config.prompts.attack) if config.prompts.attack else "default"
-    result["prompts.honest"] = str(config.prompts.honest) if config.prompts.honest else "default"
-    result["prompts.monitor"] = str(config.prompts.monitor) if config.prompts.monitor else "default"
-    result["prompts.edit"] = str(config.prompts.edit) if config.prompts.edit else "default"
-
-    # Cache
-    result["cache.enabled"] = config.cache.enabled
-
-    # MLflow (don't log mlflow config to mlflow - that's meta)
-    result["mlflow.enabled"] = config.mlflow.enabled
-
-    return result

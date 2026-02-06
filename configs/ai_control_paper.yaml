@@ -33,11 +33,3 @@ prompts:
 
 cache:
   enabled: true
-
-# MLflow tracking (install with: uv sync --extra tracking)
-mlflow:
-  enabled: true # Set to true when MLflow is installed
-  tracking_uri: null # null = use MLFLOW_TRACKING_URI env var or local ./mlruns
-  experiment_name: "ai_control_paper"
-  run_name: null # null = auto-generate
-  log_artifacts: true

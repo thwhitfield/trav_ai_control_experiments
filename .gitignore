@@ -112,8 +112,6 @@ logs/
 *.log
 *.eval
 .inspect/
-mlruns/
-mlflow.db
 
 # API keys and secrets
 .env.local

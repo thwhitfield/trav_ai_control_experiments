@@ -18,9 +18,6 @@ dev = [
     "mypy>=1.10.0",
     "pytest>=8.0.0",
 ]
-tracking = [
-    "mlflow>=2.15.0",
-]
 
 [build-system]
 requires = ["hatchling"]

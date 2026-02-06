@@ -10,7 +10,7 @@ Usage:
 
 import argparse
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -35,15 +35,10 @@ from inspect_ai import eval_set
 from trav_ai_control.analysis import analyze_and_report
 from trav_ai_control.config import (
     ExperimentConfig,
-    config_to_flat_dict,
     load_config,
 )
 from trav_ai_control.metrics import create_protocol_results_dataframe
 from trav_ai_control.plotting import plot_safety_vs_usefulness_by_protocol
-from trav_ai_control.tracking import (
-    log_protocol_metrics,
-    tracking_context,
-)
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 ATTACK_PROMPT_PATH = PROMPTS_DIR / "attack_system_prompt.txt"
@@ -418,82 +413,32 @@ def main(config_path: Path) -> None:
     else:
         print(f"Logging to {effective_log_dir}")
 
-    # Extract run name from log_dir for MLflow (e.g., "ai_control_paper_20260206_091848")
-    run_name = config.mlflow.run_name or Path(effective_log_dir).name
-
     print(f"Running with audit budget: {config.evaluation.audit_budget}%")
     print(f"Defer thresholds: {config.protocols.defer_thresholds}")
     print(f"Trusted model: {config.models.trusted}")
     print(f"Untrusted model: {config.models.untrusted}")
-    if config.mlflow.enabled:
-        print(f"MLflow tracking: enabled (experiment: {config.mlflow.experiment_name}, run: {run_name})")
 
     # Build internal config objects
     policy_config, monitor_config, protocol_config = build_internal_configs(config)
 
-    # Create MLflow config with run name matching log directory
-    mlflow_config = replace(config.mlflow, run_name=run_name)
+    # Run evaluation
+    raw_df, results_df, plot_path = run_evaluation(
+        trusted_model=config.models.trusted,
+        untrusted_model=config.models.untrusted,
+        limit=config.evaluation.limit,
+        log_dir=effective_log_dir,
+        audit_budget=config.evaluation.audit_budget,
+        policy_config=policy_config,
+        monitor_config=monitor_config,
+        protocol_config=protocol_config,
+    )
 
-    # Run with tracking context
-    with tracking_context(mlflow_config) as tracker:
-        # Log all config parameters
-        tracker.log_params(config_to_flat_dict(config))
+    # Run analysis on eval files
+    log_dir_path = Path(effective_log_dir)
+    metrics, report = analyze_and_report(log_dir_path, save_csv=True, detailed=True)
 
-        # Log config file as artifact
-        tracker.log_config_file(config_path)
-
-        # Set experiment tags
-        tags = {"experiment_type": config.experiment.name}
-        for tag in config.experiment.tags:
-            tags[f"tag.{tag}"] = "true"
-        tracker.set_tags(tags)
-
-        # Run evaluation
-        raw_df, results_df, plot_path = run_evaluation(
-            trusted_model=config.models.trusted,
-            untrusted_model=config.models.untrusted,
-            limit=config.evaluation.limit,
-            log_dir=effective_log_dir,
-            audit_budget=config.evaluation.audit_budget,
-            policy_config=policy_config,
-            monitor_config=monitor_config,
-            protocol_config=protocol_config,
-        )
-
-        # Log metrics to MLflow
-        log_protocol_metrics(tracker, results_df)
-
-        # Log artifacts
-        tracker.log_artifact(plot_path, "plots")
-        results_csv_path = Path(effective_log_dir) / "results.csv"
-        tracker.log_artifact(results_csv_path, "results")
-
-        # Run analysis on eval files
-        log_dir_path = Path(effective_log_dir)
-        metrics, report = analyze_and_report(log_dir_path, save_csv=True, detailed=True)
-
-        # Print the analysis report
-        print("\n" + report)
-
-        # Log analysis metrics to MLflow
-        if metrics:
-            total_input = sum(m.total_token_usage.input_tokens for m in metrics)
-            total_output = sum(m.total_token_usage.output_tokens for m in metrics)
-            total_cached = sum(m.total_token_usage.cached_input_tokens for m in metrics)
-            total_duration = sum(m.duration_seconds or 0 for m in metrics)
-
-            tracker.log_metrics({
-                "analysis.total_input_tokens": total_input,
-                "analysis.total_output_tokens": total_output,
-                "analysis.total_cached_tokens": total_cached,
-                "analysis.total_duration_seconds": total_duration,
-                "analysis.num_eval_files": len(metrics),
-            })
-
-            # Log eval_metrics.csv as artifact
-            eval_metrics_path = log_dir_path / "eval_metrics.csv"
-            if eval_metrics_path.exists():
-                tracker.log_artifact(eval_metrics_path, "analysis")
+    # Print the analysis report
+    print("\n" + report)
 
     print("\nEvaluation complete!")
     print(f"Total samples: {len(raw_df)}")
