@@ -9,6 +9,7 @@ Usage:
 """
 
 import argparse
+import shutil
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -418,6 +419,11 @@ def main(config_path: Path) -> None:
     print(f"Trusted model: {config.models.trusted}")
     print(f"Untrusted model: {config.models.untrusted}")
 
+    # Ensure log directory exists and copy config file
+    log_dir_path = Path(effective_log_dir)
+    log_dir_path.mkdir(parents=True, exist_ok=True)
+    shutil.copy(config_path, log_dir_path / "config.yaml")
+
     # Build internal config objects
     policy_config, monitor_config, protocol_config = build_internal_configs(config)
 
@@ -445,17 +451,19 @@ def main(config_path: Path) -> None:
     from scripts.generate_html_summary import (
         generate_html_report,
         generate_markdown_report,
+        load_run_config,
     )
 
     summaries = analyze_for_html(log_dir_path)
+    run_config = load_run_config(log_dir_path)
 
-    html = generate_html_report(log_dir_path, summaries)
+    html = generate_html_report(log_dir_path, summaries, run_config)
     html_path = log_dir_path / "summary.html"
     with open(html_path, "w") as f:
         f.write(html)
     print(f"Generated HTML summary: {html_path}")
 
-    markdown = generate_markdown_report(log_dir_path, summaries)
+    markdown = generate_markdown_report(log_dir_path, summaries, run_config)
     md_path = log_dir_path / "summary.md"
     with open(md_path, "w") as f:
         f.write(markdown)

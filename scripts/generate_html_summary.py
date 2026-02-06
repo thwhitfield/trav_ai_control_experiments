@@ -18,7 +18,58 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import yaml
 from inspect_ai.log import EvalLog, read_eval_log
+
+
+@dataclass
+class RunConfig:
+    """Configuration used for the evaluation run."""
+
+    experiment_name: str | None = None
+    experiment_description: str | None = None
+    trusted_model: str | None = None
+    untrusted_model: str | None = None
+    limit: int | None = None
+    audit_budget: float | None = None
+    defer_thresholds: list[float] | None = None
+    run_trusted_monitor_defer: bool | None = None
+    run_untrusted_monitor_defer: bool | None = None
+    run_trusted_monitor_edit: bool | None = None
+    cache_enabled: bool | None = None
+
+
+def load_run_config(log_dir: Path) -> RunConfig | None:
+    """Load the config.yaml from the log directory if it exists."""
+    config_path = log_dir / "config.yaml"
+    if not config_path.exists():
+        return None
+
+    try:
+        with open(config_path) as f:
+            data = yaml.safe_load(f) or {}
+
+        return RunConfig(
+            experiment_name=data.get("experiment", {}).get("name"),
+            experiment_description=data.get("experiment", {}).get("description"),
+            trusted_model=data.get("models", {}).get("trusted"),
+            untrusted_model=data.get("models", {}).get("untrusted"),
+            limit=data.get("evaluation", {}).get("limit"),
+            audit_budget=data.get("evaluation", {}).get("audit_budget"),
+            defer_thresholds=data.get("protocols", {}).get("defer_thresholds"),
+            run_trusted_monitor_defer=data.get("protocols", {}).get(
+                "run_trusted_monitor_defer"
+            ),
+            run_untrusted_monitor_defer=data.get("protocols", {}).get(
+                "run_untrusted_monitor_defer"
+            ),
+            run_trusted_monitor_edit=data.get("protocols", {}).get(
+                "run_trusted_monitor_edit"
+            ),
+            cache_enabled=data.get("cache", {}).get("enabled"),
+        )
+    except Exception:
+        return None
 
 
 @dataclass
@@ -212,7 +263,9 @@ def format_percentage(value: float | None) -> str:
     return f"{value * 100:.1f}%"
 
 
-def generate_html_report(log_dir: Path, summaries: list[TaskSummary]) -> str:
+def generate_html_report(
+    log_dir: Path, summaries: list[TaskSummary], config: RunConfig | None = None
+) -> str:
     """Generate the HTML report."""
     plot_base64 = get_plot_base64(log_dir)
 
@@ -271,6 +324,59 @@ def generate_html_report(log_dir: Path, summaries: list[TaskSummary]) -> str:
         table_rows.append(row)
 
     table_rows_html = "\n".join(table_rows)
+
+    # Config section
+    config_html = ""
+    if config:
+        config_rows = []
+        if config.trusted_model:
+            config_rows.append(
+                f"<tr><td>Trusted Model</td><td><code>{config.trusted_model}</code></td></tr>"
+            )
+        if config.untrusted_model:
+            config_rows.append(
+                f"<tr><td>Untrusted Model</td><td><code>{config.untrusted_model}</code></td></tr>"
+            )
+        if config.limit is not None:
+            config_rows.append(
+                f"<tr><td>Sample Limit</td><td>{config.limit}</td></tr>"
+            )
+        if config.audit_budget is not None:
+            config_rows.append(
+                f"<tr><td>Audit Budget</td><td>{config.audit_budget * 100:.0f}%</td></tr>"
+            )
+        if config.defer_thresholds:
+            thresholds_str = ", ".join(str(t) for t in config.defer_thresholds)
+            config_rows.append(
+                f"<tr><td>Defer Thresholds</td><td>{thresholds_str}</td></tr>"
+            )
+        protocols = []
+        if config.run_trusted_monitor_defer:
+            protocols.append("Trusted Monitor Defer")
+        if config.run_untrusted_monitor_defer:
+            protocols.append("Untrusted Monitor Defer")
+        if config.run_trusted_monitor_edit:
+            protocols.append("Trusted Monitor Edit")
+        if protocols:
+            config_rows.append(
+                f"<tr><td>Protocols</td><td>{', '.join(protocols)}</td></tr>"
+            )
+        if config.cache_enabled is not None:
+            config_rows.append(
+                f"<tr><td>Caching</td><td>{'Enabled' if config.cache_enabled else 'Disabled'}</td></tr>"
+            )
+
+        if config_rows:
+            config_html = f"""
+        <section class="config-section">
+            <h2>Configuration</h2>
+            <table class="config-table">
+                <tbody>
+                    {''.join(config_rows)}
+                </tbody>
+            </table>
+        </section>
+            """
 
     # Plot section
     plot_html = ""
@@ -383,6 +489,29 @@ def generate_html_report(log_dir: Path, summaries: list[TaskSummary]) -> str:
             overflow-x: auto;
         }}
 
+        .config-section {{
+            margin-bottom: 2rem;
+        }}
+
+        .config-table {{
+            width: auto;
+            min-width: 400px;
+        }}
+
+        .config-table td:first-child {{
+            font-weight: 500;
+            color: var(--text-muted);
+            white-space: nowrap;
+            padding-right: 2rem;
+        }}
+
+        .config-table code {{
+            background: var(--border-color);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }}
+
         table {{
             width: 100%;
             border-collapse: collapse;
@@ -484,6 +613,8 @@ def generate_html_report(log_dir: Path, summaries: list[TaskSummary]) -> str:
             </div>
         </section>
 
+        {config_html}
+
         {plot_html}
 
         <section class="table-section">
@@ -527,7 +658,9 @@ def generate_html_report(log_dir: Path, summaries: list[TaskSummary]) -> str:
     return html
 
 
-def generate_markdown_report(log_dir: Path, summaries: list[TaskSummary]) -> str:
+def generate_markdown_report(
+    log_dir: Path, summaries: list[TaskSummary], config: RunConfig | None = None
+) -> str:
     """Generate the Markdown report."""
     # Calculate totals
     total_duration = sum(s.duration_seconds or 0 for s in summaries)
@@ -571,6 +704,38 @@ def generate_markdown_report(log_dir: Path, summaries: list[TaskSummary]) -> str
         f"| Untrusted Tokens | {format_tokens(total_untrusted_input + total_untrusted_output)} |"
     )
     lines.append("")
+
+    # Configuration section
+    if config:
+        lines.append("## Configuration")
+        lines.append("")
+        lines.append("| Setting | Value |")
+        lines.append("|---------|-------|")
+        if config.trusted_model:
+            lines.append(f"| Trusted Model | `{config.trusted_model}` |")
+        if config.untrusted_model:
+            lines.append(f"| Untrusted Model | `{config.untrusted_model}` |")
+        if config.limit is not None:
+            lines.append(f"| Sample Limit | {config.limit} |")
+        if config.audit_budget is not None:
+            lines.append(f"| Audit Budget | {config.audit_budget * 100:.0f}% |")
+        if config.defer_thresholds:
+            thresholds_str = ", ".join(str(t) for t in config.defer_thresholds)
+            lines.append(f"| Defer Thresholds | {thresholds_str} |")
+        protocols = []
+        if config.run_trusted_monitor_defer:
+            protocols.append("Trusted Monitor Defer")
+        if config.run_untrusted_monitor_defer:
+            protocols.append("Untrusted Monitor Defer")
+        if config.run_trusted_monitor_edit:
+            protocols.append("Trusted Monitor Edit")
+        if protocols:
+            lines.append(f"| Protocols | {', '.join(protocols)} |")
+        if config.cache_enabled is not None:
+            lines.append(
+                f"| Caching | {'Enabled' if config.cache_enabled else 'Disabled'} |"
+            )
+        lines.append("")
 
     # Plot reference
     plot_path = log_dir / "ai_control_safety_vs_usefulness.png"
@@ -653,15 +818,20 @@ def main(log_dir: Path) -> None:
     summaries = analyze_log_directory(log_dir)
     print(f"Extracted summaries for {len(summaries)} tasks")
 
+    # Load config if available
+    config = load_run_config(log_dir)
+    if config:
+        print("Loaded run configuration")
+
     # Generate HTML
-    html = generate_html_report(log_dir, summaries)
+    html = generate_html_report(log_dir, summaries, config)
     html_path = log_dir / "summary.html"
     with open(html_path, "w") as f:
         f.write(html)
     print(f"Generated HTML summary: {html_path}")
 
     # Generate Markdown
-    markdown = generate_markdown_report(log_dir, summaries)
+    markdown = generate_markdown_report(log_dir, summaries, config)
     md_path = log_dir / "summary.md"
     with open(md_path, "w") as f:
         f.write(markdown)
