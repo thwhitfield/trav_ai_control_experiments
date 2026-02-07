@@ -458,7 +458,7 @@ def generate_html_report(
 
         row = f"""
         <tr>
-            <td class="task-name">{display_name}</td>
+            <td class="task-name"><a href="{s.file_name}" title="{s.file_name}">{display_name}</a></td>
             <td class="status status-{s.status}">{s.status}</td>
             <td class="numeric">{s.completed_samples}/{s.total_samples}</td>
             <td class="numeric">{format_duration(s.duration_seconds)}</td>
@@ -751,6 +751,15 @@ def generate_html_report(
             white-space: nowrap;
         }}
 
+        .task-name a {{
+            color: var(--accent);
+            text-decoration: none;
+        }}
+
+        .task-name a:hover {{
+            text-decoration: underline;
+        }}
+
         .status {{
             font-weight: 600;
         }}
@@ -1002,6 +1011,8 @@ def generate_markdown_report(
     # Table rows
     for s in summaries:
         display_name = create_task_display_name(s, separator=" / ")
+        # Create markdown link to eval file
+        task_link = f"[{display_name}]({s.file_name})"
 
         # Calculate cache rates
         trusted_cache_rate = (
@@ -1016,7 +1027,7 @@ def generate_markdown_report(
         )
 
         row = (
-            f"| {display_name} "
+            f"| {task_link} "
             f"| {s.status} "
             f"| {s.completed_samples}/{s.total_samples} "
             f"| {format_duration(s.duration_seconds)} "
