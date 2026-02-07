@@ -18,7 +18,7 @@ from pathlib import Path
 import pandas as pd
 from control_arena import ControlAgent, EvalMode
 from control_arena.analysis import samples_df
-from control_arena.eval import ControlEvalConfig, get_control_task_product
+from control_arena.eval import ControlEvalConfig, get_control_task
 from control_arena.micro_protocol import (
     defer_to_trusted_builder,
     trusted_editing_builder,
@@ -294,15 +294,28 @@ def create_evaluation_tasks(
     # Create tasks for all protocol combinations
     eval_tasks = []
     for metadata, micro_protocol_builder, eval_modes in micro_protocols:
-        tasks = get_control_task_product(
-            settings=setting,
-            micro_protocols=micro_protocol_builder,
-            modes=eval_modes,
-            eval_config=eval_config,
-            monitoring_scorers=[max_suspicion_scorer()],
-            metadata=metadata,
-        )
-        eval_tasks.extend(tasks)
+        # Build a descriptive task name from metadata
+        protocol_name = metadata.get("protocol_name", "unknown")
+        defer_threshold = metadata.get("defer_threshold")
+
+        # Create a task for each eval mode
+        for mode in eval_modes:
+            # Build clean task name: protocol_t{threshold}_{mode}
+            if defer_threshold is not None:
+                task_name = f"{protocol_name}_t{defer_threshold:.1f}_{mode.value}"
+            else:
+                task_name = f"{protocol_name}_{mode.value}"
+
+            task = get_control_task(
+                setting=setting,
+                micro_protocol=micro_protocol_builder,
+                mode=mode,
+                eval_config=eval_config,
+                monitoring_scorers=[max_suspicion_scorer()],
+                metadata=metadata,
+                task_name=task_name,
+            )
+            eval_tasks.append(task)
 
     print(f"Created {len(eval_tasks)} evaluation tasks total")
     return eval_tasks
