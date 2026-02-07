@@ -1053,6 +1053,28 @@ def generate_markdown_report(
     return "\n".join(lines)
 
 
+def copy_summary_notebook(log_dir: Path) -> Path | None:
+    """Copy the summary template notebook to the log directory.
+
+    Args:
+        log_dir: Path to the log directory
+
+    Returns:
+        Path to the copied notebook, or None if template not found
+    """
+    import shutil
+
+    template_path = (
+        Path(__file__).parent.parent.parent / "notebooks" / "summary_template.ipynb"
+    )
+    notebook_path = log_dir / "summary.ipynb"
+
+    if template_path.exists():
+        shutil.copy(template_path, notebook_path)
+        return notebook_path
+    return None
+
+
 def main(log_dir: Path) -> None:
     """Generate HTML and Markdown summaries for a log directory."""
     if not log_dir.exists():
@@ -1073,14 +1095,21 @@ def main(log_dir: Path) -> None:
     if config:
         print("Loaded run configuration")
 
-    # Generate HTML
+    # Copy the template notebook (primary output - opens in VSCode and runs analysis)
+    notebook_path = copy_summary_notebook(log_dir)
+    if notebook_path:
+        print(f"Copied notebook summary: {notebook_path}")
+    else:
+        print("Warning: Template notebook not found")
+
+    # Generate HTML (backup for browser viewing)
     html = generate_html_report(log_dir, summaries, config)
     html_path = log_dir / "summary.html"
     with open(html_path, "w") as f:
         f.write(html)
     print(f"Generated HTML summary: {html_path}")
 
-    # Generate Markdown
+    # Generate Markdown (for quick reference)
     markdown = generate_markdown_report(log_dir, summaries, config)
     md_path = log_dir / "summary.md"
     with open(md_path, "w") as f:
