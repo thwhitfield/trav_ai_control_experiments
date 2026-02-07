@@ -21,6 +21,7 @@ from trav_ai_control.plotting import plot_safety_vs_usefulness_by_protocol
 from trav_ai_control.summary import (
     RunConfig,
     TaskSummary,
+    calculate_model_cost,
     generate_html_report,
     generate_markdown_report,
     load_run_config,
@@ -50,6 +51,7 @@ __all__ = [
     "RunConfig",
     "TaskSummary",
     "analyze_for_html",
+    "calculate_model_cost",
     "generate_html_report",
     "generate_markdown_report",
     "load_run_config",

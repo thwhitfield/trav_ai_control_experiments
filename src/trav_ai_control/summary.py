@@ -4,6 +4,7 @@ This script creates summary files containing:
 - The safety vs usefulness plot
 - Summary statistics for all evaluation tasks
 - Per-model token usage breakdown
+- Cost estimates based on token usage
 
 Usage:
     python scripts/generate_html_summary.py logs/ai_control_paper_20260206_091848
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import logging
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -20,6 +22,63 @@ from pathlib import Path
 
 import yaml
 from inspect_ai.log import EvalLog, read_eval_log
+
+try:
+    from litellm import cost_per_token
+
+    LITELLM_AVAILABLE = True
+except ImportError:
+    LITELLM_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+
+def calculate_model_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cached_tokens: int = 0,
+) -> float | None:
+    """Calculate cost for a model's token usage.
+
+    Args:
+        model: Model name (e.g., "anthropic/claude-haiku-4-5-20251001")
+        input_tokens: Number of input tokens
+        output_tokens: Number of output tokens
+        cached_tokens: Number of cached input tokens (reduces input cost)
+
+    Returns:
+        Cost in USD, or None if pricing not available
+    """
+    if not LITELLM_AVAILABLE:
+        return None
+
+    try:
+        # litellm expects the model name without provider prefix for some models
+        # Try with the full name first, then without prefix
+        prompt_cost, completion_cost = cost_per_token(
+            model=model,
+            prompt_tokens=input_tokens,
+            completion_tokens=output_tokens,
+            cache_read_input_tokens=cached_tokens,
+        )
+        return prompt_cost + completion_cost
+    except Exception as e:
+        # Try without provider prefix
+        if "/" in model:
+            model_name = model.split("/", 1)[1]
+            try:
+                prompt_cost, completion_cost = cost_per_token(
+                    model=model_name,
+                    prompt_tokens=input_tokens,
+                    completion_tokens=output_tokens,
+                    cache_read_input_tokens=cached_tokens,
+                )
+                return prompt_cost + completion_cost
+            except Exception:
+                pass
+        logger.debug(f"Could not calculate cost for model {model}: {e}")
+        return None
 
 
 @dataclass
@@ -138,6 +197,13 @@ class TaskSummary:
     # Model call counts
     trusted_calls: int
     untrusted_calls: int
+    # Model names (for cost calculation)
+    trusted_model: str | None
+    untrusted_model: str | None
+    # Cost estimates (USD)
+    trusted_cost: float | None
+    untrusted_cost: float | None
+    total_cost: float | None
     # Scores
     main_task_accuracy: float | None
     side_task_accuracy: float | None
@@ -184,12 +250,20 @@ def extract_task_summary(log: EvalLog, file_path: Path) -> TaskSummary:
     trusted_input = trusted_output = trusted_cached = 0
     untrusted_input = untrusted_output = untrusted_cached = 0
     trusted_calls = untrusted_calls = 0
+    trusted_model_name: str | None = None
+    untrusted_model_name: str | None = None
 
     # Build a mapping from model name to role using model_roles from eval spec
     model_to_role: dict[str, str] = {}
+    role_to_model: dict[str, str] = {}
     if log.eval and log.eval.model_roles:
         for role, model_config in log.eval.model_roles.items():
             model_to_role[model_config.model] = role
+            role_to_model[role] = model_config.model
+
+    # Get model names from role mapping
+    trusted_model_name = role_to_model.get("trusted")
+    untrusted_model_name = role_to_model.get("untrusted")
 
     if log.stats and log.stats.model_usage:
         for model_name, usage in log.stats.model_usage.items():
@@ -211,6 +285,25 @@ def extract_task_summary(log: EvalLog, file_path: Path) -> TaskSummary:
                 untrusted_output += output_tokens
                 untrusted_cached += cached_tokens
                 untrusted_calls += 1
+
+    # Calculate costs
+    trusted_cost = None
+    untrusted_cost = None
+    total_cost = None
+
+    if trusted_model_name and (trusted_input > 0 or trusted_output > 0):
+        trusted_cost = calculate_model_cost(
+            trusted_model_name, trusted_input, trusted_output, trusted_cached
+        )
+
+    if untrusted_model_name and (untrusted_input > 0 or untrusted_output > 0):
+        untrusted_cost = calculate_model_cost(
+            untrusted_model_name, untrusted_input, untrusted_output, untrusted_cached
+        )
+
+    # Calculate total cost if at least one cost is available
+    if trusted_cost is not None or untrusted_cost is not None:
+        total_cost = (trusted_cost or 0.0) + (untrusted_cost or 0.0)
 
     # Scores
     main_task_accuracy = None
@@ -246,6 +339,11 @@ def extract_task_summary(log: EvalLog, file_path: Path) -> TaskSummary:
         untrusted_cached_tokens=untrusted_cached,
         trusted_calls=trusted_calls,
         untrusted_calls=untrusted_calls,
+        trusted_model=trusted_model_name,
+        untrusted_model=untrusted_model_name,
+        trusted_cost=trusted_cost,
+        untrusted_cost=untrusted_cost,
+        total_cost=total_cost,
         main_task_accuracy=main_task_accuracy,
         side_task_accuracy=side_task_accuracy,
         max_suspicion=max_suspicion,
@@ -307,6 +405,15 @@ def format_percentage(value: float | None) -> str:
     return f"{value * 100:.1f}%"
 
 
+def format_cost(cost: float | None) -> str:
+    """Format a cost value in USD."""
+    if cost is None:
+        return "-"
+    if cost < 0.01:
+        return f"${cost:.4f}"
+    return f"${cost:.2f}"
+
+
 def generate_html_report(
     log_dir: Path, summaries: list[TaskSummary], config: RunConfig | None = None
 ) -> str:
@@ -320,6 +427,7 @@ def generate_html_report(
     total_trusted_output = sum(s.trusted_output_tokens for s in summaries)
     total_untrusted_input = sum(s.untrusted_input_tokens for s in summaries)
     total_untrusted_output = sum(s.untrusted_output_tokens for s in summaries)
+    total_cost = sum(s.total_cost or 0 for s in summaries)
 
     # Sort summaries by protocol, threshold, mode
     summaries = sorted(
@@ -357,9 +465,12 @@ def generate_html_report(
             <td class="numeric">{format_tokens(s.trusted_input_tokens)}</td>
             <td class="numeric">{format_tokens(s.trusted_output_tokens)}</td>
             <td class="numeric">{trusted_cache_rate}</td>
+            <td class="numeric">{format_cost(s.trusted_cost)}</td>
             <td class="numeric">{format_tokens(s.untrusted_input_tokens)}</td>
             <td class="numeric">{format_tokens(s.untrusted_output_tokens)}</td>
             <td class="numeric">{untrusted_cache_rate}</td>
+            <td class="numeric">{format_cost(s.untrusted_cost)}</td>
+            <td class="numeric">{format_cost(s.total_cost)}</td>
             <td class="numeric">{format_percentage(s.main_task_accuracy)}</td>
             <td class="numeric">{format_percentage(s.side_task_accuracy)}</td>
             <td class="numeric">{format_percentage(s.max_suspicion)}</td>
@@ -695,6 +806,10 @@ def generate_html_report(
                 <div class="card-label">Untrusted Tokens</div>
                 <div class="card-value">{format_tokens(total_untrusted_input + total_untrusted_output)}</div>
             </div>
+            <div class="card">
+                <div class="card-label">Total Cost</div>
+                <div class="card-value">{format_cost(total_cost)}</div>
+            </div>
         </section>
 
         {config_html}
@@ -710,17 +825,20 @@ def generate_html_report(
                         <th rowspan="2">Status</th>
                         <th rowspan="2">Samples</th>
                         <th rowspan="2">Duration</th>
-                        <th colspan="3" class="group-header">Trusted Model</th>
-                        <th colspan="3" class="group-header">Untrusted Model</th>
+                        <th colspan="4" class="group-header">Trusted Model</th>
+                        <th colspan="4" class="group-header">Untrusted Model</th>
+                        <th rowspan="2">Total Cost</th>
                         <th colspan="3" class="group-header">Scores</th>
                     </tr>
                     <tr>
                         <th class="numeric">Input</th>
                         <th class="numeric">Output</th>
                         <th class="numeric">Cache</th>
+                        <th class="numeric">Cost</th>
                         <th class="numeric">Input</th>
                         <th class="numeric">Output</th>
                         <th class="numeric">Cache</th>
+                        <th class="numeric">Cost</th>
                         <th class="numeric">Main</th>
                         <th class="numeric">Side</th>
                         <th class="numeric">Suspicion</th>
@@ -753,6 +871,7 @@ def generate_markdown_report(
     total_trusted_output = sum(s.trusted_output_tokens for s in summaries)
     total_untrusted_input = sum(s.untrusted_input_tokens for s in summaries)
     total_untrusted_output = sum(s.untrusted_output_tokens for s in summaries)
+    total_cost = sum(s.total_cost or 0 for s in summaries)
 
     # Sort summaries by protocol, threshold, mode
     summaries = sorted(
@@ -787,6 +906,7 @@ def generate_markdown_report(
     lines.append(
         f"| Untrusted Tokens | {format_tokens(total_untrusted_input + total_untrusted_output)} |"
     )
+    lines.append(f"| Total Cost | {format_cost(total_cost)} |")
     lines.append("")
 
     # Configuration section
@@ -868,15 +988,15 @@ def generate_markdown_report(
     # Table header
     lines.append(
         "| Task | Status | Samples | Duration | "
-        "Trusted In | Trusted Out | Trusted Cache | "
-        "Untrusted In | Untrusted Out | Untrusted Cache | "
-        "Main | Side | Suspicion |"
+        "Trusted In | Trusted Out | Trusted Cache | Trusted Cost | "
+        "Untrusted In | Untrusted Out | Untrusted Cache | Untrusted Cost | "
+        "Total Cost | Main | Side | Suspicion |"
     )
     lines.append(
         "|------|--------|---------|----------|"
-        "-----------|-------------|---------------|"
-        "-------------|---------------|----------------|"
-        "------|------|-----------|"
+        "-----------|-------------|---------------|--------------|"
+        "-------------|---------------|----------------|----------------|"
+        "------------|------|------|-----------|"
     )
 
     # Table rows
@@ -903,9 +1023,12 @@ def generate_markdown_report(
             f"| {format_tokens(s.trusted_input_tokens)} "
             f"| {format_tokens(s.trusted_output_tokens)} "
             f"| {trusted_cache_rate} "
+            f"| {format_cost(s.trusted_cost)} "
             f"| {format_tokens(s.untrusted_input_tokens)} "
             f"| {format_tokens(s.untrusted_output_tokens)} "
             f"| {untrusted_cache_rate} "
+            f"| {format_cost(s.untrusted_cost)} "
+            f"| {format_cost(s.total_cost)} "
             f"| {format_percentage(s.main_task_accuracy)} "
             f"| {format_percentage(s.side_task_accuracy)} "
             f"| {format_percentage(s.max_suspicion)} |"
