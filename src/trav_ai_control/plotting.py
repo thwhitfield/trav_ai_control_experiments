@@ -46,14 +46,24 @@ def plot_safety_vs_usefulness_by_protocol(
             capthick=1,
         )
 
-        # Add defer threshold labels to points
+        # Add defer percentage labels to points (fallback to threshold if not available)
         for _, row in protocol_df.iterrows():
+            # Skip if no defer info
             if row.get("defer_threshold") is None or pd.isna(
                 row.get("defer_threshold")
             ):
                 continue
+
+            # Prefer defer_percentage, fallback to threshold
+            if row.get("defer_percentage") is not None and not pd.isna(
+                row.get("defer_percentage")
+            ):
+                label = f"{row['defer_percentage']:.0f}%"
+            else:
+                label = f"t={row['defer_threshold']:.1f}"
+
             plt.annotate(
-                f"{row['defer_threshold']:.1f}",
+                label,
                 (row["safety"], row["usefulness"]),
                 xytext=(3, 3),
                 textcoords="offset points",
