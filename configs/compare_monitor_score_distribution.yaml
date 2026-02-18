@@ -7,6 +7,7 @@
 
 evaluation:
   limit: 300
+  audit_budget: 2.0
   log_dir: null # Auto-generated if null
 
 models:

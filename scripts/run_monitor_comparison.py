@@ -185,7 +185,7 @@ def run_monitor_comparison(config_path: Path | str) -> pd.DataFrame:
     # Save distribution plot
     from trav_ai_control.plotting import plot_monitoring_score_distribution
 
-    fig = plot_monitoring_score_distribution(df)
+    fig = plot_monitoring_score_distribution(df, audit_budget=config.evaluation.audit_budget)
     plot_path = log_dir_path / "monitor_score_distribution.png"
     fig.savefig(plot_path.as_posix(), dpi=150, bbox_inches="tight")
     print(f"Saved plot to {plot_path}")
