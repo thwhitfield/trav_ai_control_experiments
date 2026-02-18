@@ -302,7 +302,7 @@ def create_evaluation_tasks(
         for mode in eval_modes:
             # Build clean task name: protocol_t{threshold}_{mode}
             if defer_threshold is not None:
-                task_name = f"{protocol_name}_t{defer_threshold:.1f}_{mode.value}"
+                task_name = f"{protocol_name}_t{defer_threshold:.2f}_{mode.value}"
             else:
                 task_name = f"{protocol_name}_{mode.value}"
 
