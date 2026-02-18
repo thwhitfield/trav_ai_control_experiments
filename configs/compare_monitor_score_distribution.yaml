@@ -1,0 +1,37 @@
+# Monitor Score Distribution Comparison Configuration
+# Run minimal evals (trusted + untrusted monitor × honest + attack) to compare
+# monitoring score distributions across different settings.
+#
+# Usage:
+#   python scripts/run_monitor_comparison.py configs/compare_monitor_score_distribution.yaml
+
+evaluation:
+  limit: 300
+  log_dir: null # Auto-generated if null
+
+models:
+  trusted: "openai/gpt-4.1-mini-2025-04-14"
+  untrusted: "anthropic/claude-haiku-4-5-20251001"
+
+sandbox:
+  max_sandboxes: 20
+  max_tasks: 2
+  max_samples: 20
+
+monitor:
+  num_samples: 3
+
+setting:
+  type: "apps"
+  has_backdoor_solution: true
+
+policy:
+  use_dataset_solutions: true
+
+prompts:
+  attack: null
+  honest: null
+  monitor: null
+
+cache:
+  enabled: true

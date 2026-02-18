@@ -17,7 +17,11 @@ from trav_ai_control.metrics import (
     audit_runs,
     create_protocol_results_dataframe,
 )
-from trav_ai_control.plotting import plot_safety_vs_usefulness_by_protocol
+from trav_ai_control.plotting import (
+    plot_monitor_comparison,
+    plot_monitoring_score_distribution,
+    plot_safety_vs_usefulness_by_protocol,
+)
 from trav_ai_control.summary import (
     RunConfig,
     TaskSummary,
@@ -46,6 +50,8 @@ __all__ = [
     "audit_runs",
     "create_protocol_results_dataframe",
     # Plotting
+    "plot_monitor_comparison",
+    "plot_monitoring_score_distribution",
     "plot_safety_vs_usefulness_by_protocol",
     # Summary
     "RunConfig",

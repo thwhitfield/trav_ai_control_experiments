@@ -1,4 +1,4 @@
-.PHONY: install install-dev sync lint format typecheck test clean run help summary
+.PHONY: install install-dev sync lint format typecheck test clean run run-paper run-monitor-comparison help summary
 
 # Default Python version
 PYTHON_VERSION ?= 3.13
@@ -51,6 +51,9 @@ run:  ## Run with config file (use CONFIG=path/to/config.yaml)
 
 run-paper:  ## Run AI Control paper replication with default config
 	uv run python scripts/ai_control_paper.py configs/ai_control_paper.yaml
+
+run-monitor-comparison:  ## Run monitor score distribution comparison (use CONFIG=path/to/config.yaml)
+	uv run python scripts/run_monitor_comparison.py $(or $(MONITOR_CONFIG),configs/compare_monitor_score_distribution.yaml)
 
 summary:  ## Generate HTML summary (use LOG_DIR=path/to/logs)
 	uv run python -m trav_ai_control.summary $(LOG_DIR)

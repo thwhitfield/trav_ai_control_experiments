@@ -120,3 +120,66 @@ def plot_monitoring_score_distribution(df: pd.DataFrame) -> plt.Figure:
 
     plt.tight_layout()
     return fig
+
+
+def plot_monitor_comparison(
+    runs: list[tuple[str, pd.DataFrame]],
+) -> plt.Figure:
+    """Plot monitoring score distributions for multiple runs side-by-side.
+
+    Creates a grid of histograms: one row per run, two columns
+    (trusted monitor, untrusted monitor). Each subplot shows honest vs
+    attack score distributions.
+
+    Args:
+        runs: List of (label, df) tuples. Each df should have columns
+              protocol_name, eval_mode, and score_max_suspicion_scorer.
+
+    Returns:
+        The matplotlib figure object.
+    """
+    monitor_configs = [
+        ("trusted_monitor_defer", "Trusted Monitoring"),
+        ("untrusted_monitor_defer", "Untrusted Monitoring"),
+    ]
+
+    n_rows = len(runs)
+    n_cols = len(monitor_configs)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows))
+
+    # Ensure axes is always 2D
+    if n_rows == 1:
+        axes = [axes]
+
+    for row, (label, df) in enumerate(runs):
+        for col, (protocol_name, monitor_title) in enumerate(monitor_configs):
+            ax = axes[row][col]
+
+            proto_df = df[df["protocol_name"] == protocol_name]
+
+            honest = proto_df.loc[
+                proto_df["eval_mode"] == "honest", "score_max_suspicion_scorer"
+            ].dropna()
+            attack = proto_df.loc[
+                proto_df["eval_mode"] == "attack", "score_max_suspicion_scorer"
+            ].dropna()
+
+            ax.hist(
+                [honest, attack],
+                bins=20,
+                density=True,
+                label=["Innocent", "Backdoored"],
+            )
+            ax.legend()
+            ax.set_xlabel("Monitoring score")
+            ax.set_ylabel("Relative Frequency")
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y}%"))
+
+            # Title: monitor type on top row, run label on left column
+            if row == 0:
+                ax.set_title(monitor_title)
+            if col == 0:
+                ax.set_ylabel(f"{label}\n\nRelative Frequency")
+
+    plt.tight_layout()
+    return fig
