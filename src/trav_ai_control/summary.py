@@ -105,8 +105,10 @@ class RunConfig:
     has_backdoor_solution: bool | None = None
     # Policy
     use_dataset_solutions: bool | None = None
-    # Protocols
-    defer_thresholds: list[float] | None = None
+    # Protocols (per-protocol thresholds)
+    trusted_monitor_defer_thresholds: list[float] | None = None
+    untrusted_monitor_defer_thresholds: list[float] | None = None
+    trusted_monitor_edit_thresholds: list[float] | None = None
     run_trusted_monitor_defer: bool | None = None
     run_untrusted_monitor_defer: bool | None = None
     run_trusted_monitor_edit: bool | None = None
@@ -149,8 +151,16 @@ def load_run_config(log_dir: Path) -> RunConfig | None:
             has_backdoor_solution=data.get("setting", {}).get("has_backdoor_solution"),
             # Policy
             use_dataset_solutions=data.get("policy", {}).get("use_dataset_solutions"),
-            # Protocols
-            defer_thresholds=data.get("protocols", {}).get("defer_thresholds"),
+            # Protocols (per-protocol thresholds)
+            trusted_monitor_defer_thresholds=data.get("protocols", {}).get(
+                "trusted_monitor_defer_thresholds"
+            ),
+            untrusted_monitor_defer_thresholds=data.get("protocols", {}).get(
+                "untrusted_monitor_defer_thresholds"
+            ),
+            trusted_monitor_edit_thresholds=data.get("protocols", {}).get(
+                "trusted_monitor_edit_thresholds"
+            ),
             run_trusted_monitor_defer=data.get("protocols", {}).get(
                 "run_trusted_monitor_defer"
             ),
@@ -533,11 +543,21 @@ def generate_html_report(
             config_rows.append(
                 f"<tr><td>Solution Source</td><td>{policy_str}</td></tr>"
             )
-        # Thresholds
-        if config.defer_thresholds:
-            thresholds_str = ", ".join(str(t) for t in config.defer_thresholds)
+        # Per-protocol thresholds
+        if config.trusted_monitor_defer_thresholds:
+            thresholds_str = ", ".join(str(t) for t in config.trusted_monitor_defer_thresholds)
             config_rows.append(
-                f"<tr><td>Defer Thresholds</td><td>{thresholds_str}</td></tr>"
+                f"<tr><td>Trusted Monitor Defer Thresholds</td><td>{thresholds_str}</td></tr>"
+            )
+        if config.untrusted_monitor_defer_thresholds:
+            thresholds_str = ", ".join(str(t) for t in config.untrusted_monitor_defer_thresholds)
+            config_rows.append(
+                f"<tr><td>Untrusted Monitor Defer Thresholds</td><td>{thresholds_str}</td></tr>"
+            )
+        if config.trusted_monitor_edit_thresholds:
+            thresholds_str = ", ".join(str(t) for t in config.trusted_monitor_edit_thresholds)
+            config_rows.append(
+                f"<tr><td>Trusted Monitor Edit Thresholds</td><td>{thresholds_str}</td></tr>"
             )
         # Protocols
         protocols = []
@@ -957,10 +977,16 @@ def generate_markdown_report(
         if config.use_dataset_solutions is not None:
             policy_str = "Dataset solutions" if config.use_dataset_solutions else "Model-generated solutions"
             lines.append(f"| Solution Source | {policy_str} |")
-        # Thresholds
-        if config.defer_thresholds:
-            thresholds_str = ", ".join(str(t) for t in config.defer_thresholds)
-            lines.append(f"| Defer Thresholds | {thresholds_str} |")
+        # Per-protocol thresholds
+        if config.trusted_monitor_defer_thresholds:
+            thresholds_str = ", ".join(str(t) for t in config.trusted_monitor_defer_thresholds)
+            lines.append(f"| Trusted Monitor Defer Thresholds | {thresholds_str} |")
+        if config.untrusted_monitor_defer_thresholds:
+            thresholds_str = ", ".join(str(t) for t in config.untrusted_monitor_defer_thresholds)
+            lines.append(f"| Untrusted Monitor Defer Thresholds | {thresholds_str} |")
+        if config.trusted_monitor_edit_thresholds:
+            thresholds_str = ", ".join(str(t) for t in config.trusted_monitor_edit_thresholds)
+            lines.append(f"| Trusted Monitor Edit Thresholds | {thresholds_str} |")
         # Protocols
         protocols = []
         if config.run_trusted_only:

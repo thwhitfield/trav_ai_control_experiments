@@ -194,7 +194,7 @@ def create_micro_protocols(
 
     # Trusted Monitoring + Defer to Trusted
     if config.protocols.run_trusted_monitor_defer:
-        for threshold in config.protocols.defer_thresholds:
+        for threshold in config.protocols.trusted_monitor_defer_thresholds:
             micro_protocols.append(
                 (
                     {
@@ -213,7 +213,7 @@ def create_micro_protocols(
 
     # Untrusted Monitoring + Defer to Trusted
     if config.protocols.run_untrusted_monitor_defer:
-        for threshold in config.protocols.defer_thresholds:
+        for threshold in config.protocols.untrusted_monitor_defer_thresholds:
             micro_protocols.append(
                 (
                     {
@@ -232,7 +232,7 @@ def create_micro_protocols(
 
     # Trusted Monitoring + Defer to Trusted Editing
     if config.protocols.run_trusted_monitor_edit:
-        for threshold in config.protocols.defer_thresholds:
+        for threshold in config.protocols.trusted_monitor_edit_thresholds:
             micro_protocols.append(
                 (
                     {
@@ -432,7 +432,9 @@ def main(config_path: Path) -> None:
 
     # Print configuration summary
     print(f"Running with audit budget: {config.evaluation.audit_budget}%")
-    print(f"Defer thresholds: {config.protocols.defer_thresholds}")
+    print(f"Trusted monitor defer thresholds: {config.protocols.trusted_monitor_defer_thresholds}")
+    print(f"Untrusted monitor defer thresholds: {config.protocols.untrusted_monitor_defer_thresholds}")
+    print(f"Trusted monitor edit thresholds: {config.protocols.trusted_monitor_edit_thresholds}")
     print(f"Trusted model: {config.models.trusted}")
     print(f"Untrusted model: {config.models.untrusted}")
     print(f"Sandbox: max_sandboxes={config.sandbox.max_sandboxes}, "
