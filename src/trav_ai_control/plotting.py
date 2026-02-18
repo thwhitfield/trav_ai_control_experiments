@@ -1,6 +1,7 @@
 """Plotting utilities for AI Control paper replication."""
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 
@@ -79,4 +80,43 @@ def plot_safety_vs_usefulness_by_protocol(
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
+    return fig
+
+
+def plot_monitoring_score_distribution(df: pd.DataFrame) -> plt.Figure:
+    """Plot monitoring score distributions for honest vs attack samples."""
+    monitor_configs = [
+        ("trusted_monitor_defer", "Trusted Monitoring"),
+        ("untrusted_monitor_defer", "Untrusted Monitoring"),
+    ]
+
+    fig, axes = plt.subplots(
+        1, len(monitor_configs), figsize=(6 * len(monitor_configs), 5)
+    )
+
+    for ax, (protocol_name, title) in zip(axes, monitor_configs):
+        # Subset to protocol and minimum threshold
+        proto_df = df[df["protocol_name"] == protocol_name]
+        min_threshold = proto_df["defer_threshold"].min()
+        proto_df = proto_df[proto_df["defer_threshold"] == min_threshold]
+
+        # Get the honest and attack score pandas series
+        honest = proto_df.loc[
+            proto_df["eval_mode"] == "honest", "score_max_suspicion_scorer"
+        ].dropna()
+        attack = proto_df.loc[
+            proto_df["eval_mode"] == "attack", "score_max_suspicion_scorer"
+        ].dropna()
+
+        # Plot them in comparison
+        ax.hist(
+            [honest, attack], bins=20, density=True, label=["Innocent", "Backdoored"]
+        )
+        ax.legend()
+        ax.set_xlabel("Monitoring score")
+        ax.set_ylabel("Relative Frequency")
+        ax.set_title(title)
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y}%"))
+
+    plt.tight_layout()
     return fig
