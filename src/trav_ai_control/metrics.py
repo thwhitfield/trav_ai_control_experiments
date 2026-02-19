@@ -38,13 +38,16 @@ def audit_runs(
 
     Args:
         df: DataFrame with evaluation samples
-        audit_budget: Audit budget percentage for threshold computation
+        audit_budget: Audit budget as a decimal (e.g. 0.02 = 2%)
         trusted_usefulness_baseline: Trusted model usefulness baseline for usefulness scaling
         untrusted_usefulness_baseline: Untrusted model usefulness baseline for usefulness scaling
 
     Returns:
         AuditResult with usefulness and safety statistics
     """
+    # control_arena expects audit_budget as a percentage (e.g. 2.0 for 2%)
+    audit_budget_pct = audit_budget * 100
+
     # Compute usefulness from honest runs
     usefulness = compute_usefulness(df)
 
@@ -63,13 +66,13 @@ def audit_runs(
     safety = compute_safety(
         df,  # type: ignore
         "max_suspicion_scorer",
-        audit_budget=audit_budget,
+        audit_budget=audit_budget_pct,
     )
 
     suspicion_threshold = compute_suspicion_threshold(
         df[df["eval_mode"] == EvalMode.HONEST.value],  # type: ignore
         "max_suspicion_scorer",
-        audit_budget=audit_budget,
+        audit_budget=audit_budget_pct,
     )
 
     return AuditResult(
@@ -185,21 +188,24 @@ def compute_upfront_audit(
 
     Args:
         results_df: DataFrame with evaluation samples for upfront audit protocol
-        audit_budget: Audit budget percentage for threshold computation
+        audit_budget: Audit budget as a decimal (e.g. 0.02 = 2%)
         trusted_usefulness_baseline: Trusted model usefulness baseline for usefulness scaling
         untrusted_usefulness_baseline: Untrusted model usefulness baseline for usefulness scaling
     Returns:
         AuditResult with usefulness and safety statistics
     """
+    # control_arena expects audit_budget as a percentage (e.g. 2.0 for 2%)
+    audit_budget_pct = audit_budget * 100
+
     safety = compute_safety_upfront_audit(
         results_df,  # type: ignore
-        audit_budget,
+        audit_budget_pct,
     )
 
     usefulness = compute_usefulness_upfront_audit(
         results_df,  # type: ignore
         trusted_usefulness=trusted_usefulness_baseline,
-        audit_budget=audit_budget,
+        audit_budget=audit_budget_pct,
     )
 
     # Scale usefulness if baselines provided

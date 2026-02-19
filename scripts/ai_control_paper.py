@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from control_arena import ControlAgent, EvalMode
 from control_arena.analysis import samples_df
@@ -252,6 +253,159 @@ def create_micro_protocols(
     return micro_protocols
 
 
+def calibrate_thresholds(
+    config: ExperimentConfig,
+    log_dir: str,
+    prompts: PromptLoader,
+) -> ExperimentConfig:
+    """Run calibration evals to convert defer percentages to thresholds.
+
+    If any *_percentages fields are set in config.protocols, runs minimal evals
+    at threshold 1.0 to collect score distributions, then computes the thresholds
+    corresponding to the requested defer percentages.
+
+    Args:
+        config: Full experiment configuration.
+        log_dir: Parent log directory (calibration logs go in a subdirectory).
+        prompts: Prompt loader with all prompts.
+
+    Returns:
+        Updated config with computed thresholds replacing any percentage specs.
+    """
+    protocols = config.protocols
+    needs_trusted = (
+        protocols.trusted_monitor_defer_percentages is not None
+        or protocols.trusted_monitor_edit_percentages is not None
+    )
+    needs_untrusted = protocols.untrusted_monitor_defer_percentages is not None
+
+    if not needs_trusted and not needs_untrusted:
+        return config
+
+    print("\n===== Calibration Phase =====")
+    print("Running minimal evals to determine thresholds from defer percentages...")
+
+    calibration_log_dir = str(Path(log_dir) / "calibration")
+
+    # Create policies and monitors
+    untrusted_policy, trusted_policy, _ = create_policies(
+        prompts=prompts,
+        cache_enabled=config.cache.enabled,
+        use_dataset_solutions=config.policy.use_dataset_solutions,
+    )
+    trusted_monitor, untrusted_monitor = create_monitors(
+        prompts=prompts,
+        num_samples=config.monitor.num_samples,
+    )
+
+    # Build eval config for calibration
+    eval_config = ControlEvalConfig(
+        limit=config.evaluation.limit,
+        log_dir=calibration_log_dir,
+        trusted_model=config.models.trusted,
+        untrusted_model=config.models.untrusted,
+        system_prompt=prompts.honest_prompt,
+        max_sandboxes=config.sandbox.max_sandboxes,
+        max_tasks=config.sandbox.max_tasks,
+        max_samples=config.sandbox.max_samples,
+    )
+
+    setting = AppsSetting(
+        cache_python_code=config.cache.enabled,
+        has_backdoor_solution=config.setting.has_backdoor_solution,
+    )
+
+    # Build calibration tasks — only the monitors we need, at threshold 1.0
+    CALIBRATION_THRESHOLD = 1.0
+    calibration_tasks = []
+
+    if needs_trusted:
+        for mode in [EvalMode.HONEST, EvalMode.ATTACK]:
+            task_name = f"calibration_trusted_t{CALIBRATION_THRESHOLD:.2f}_{mode.value}"
+            calibration_tasks.append(
+                get_control_task(
+                    setting=setting,
+                    micro_protocol=defer_to_trusted_builder(
+                        defer_threshold=CALIBRATION_THRESHOLD,
+                        untrusted_policy=untrusted_policy,
+                        trusted_policy=trusted_policy,
+                        monitor=trusted_monitor,
+                    ),
+                    mode=mode,
+                    eval_config=eval_config,
+                    monitoring_scorers=[max_suspicion_scorer()],
+                    metadata={"protocol_name": "trusted_monitor_defer", "defer_threshold": CALIBRATION_THRESHOLD},
+                    task_name=task_name,
+                )
+            )
+
+    if needs_untrusted:
+        for mode in [EvalMode.HONEST, EvalMode.ATTACK]:
+            task_name = f"calibration_untrusted_t{CALIBRATION_THRESHOLD:.2f}_{mode.value}"
+            calibration_tasks.append(
+                get_control_task(
+                    setting=setting,
+                    micro_protocol=defer_to_trusted_builder(
+                        defer_threshold=CALIBRATION_THRESHOLD,
+                        untrusted_policy=untrusted_policy,
+                        trusted_policy=trusted_policy,
+                        monitor=untrusted_monitor,
+                    ),
+                    mode=mode,
+                    eval_config=eval_config,
+                    monitoring_scorers=[max_suspicion_scorer()],
+                    metadata={"protocol_name": "untrusted_monitor_defer", "defer_threshold": CALIBRATION_THRESHOLD},
+                    task_name=task_name,
+                )
+            )
+
+    print(f"Running {len(calibration_tasks)} calibration tasks...")
+    _ = eval_set(tasks=calibration_tasks, **eval_config.eval_args())
+
+    # Collect calibration results
+    df = samples_df(calibration_log_dir)
+    df["protocol_name"] = df["metadata_eval"].apply(
+        lambda x: x.get("protocol_name") if isinstance(x, dict) else None
+    )
+
+    # Convert percentages (as decimals, e.g. 0.05 = 5%) to thresholds
+    def percentages_to_thresholds(honest_scores: pd.Series, percentages: list[float]) -> list[float]:
+        thresholds = []
+        for pct in percentages:
+            threshold = float(np.percentile(honest_scores, (1.0 - pct) * 100))
+            thresholds.append(round(threshold, 4))
+        return thresholds
+
+    if needs_trusted:
+        trusted_honest = df.loc[
+            (df["protocol_name"] == "trusted_monitor_defer") & (df["eval_mode"] == "honest"),
+            "score_max_suspicion_scorer",
+        ].dropna()
+
+        if protocols.trusted_monitor_defer_percentages is not None:
+            thresholds = percentages_to_thresholds(trusted_honest, protocols.trusted_monitor_defer_percentages)
+            print(f"Trusted monitor defer: {dict(zip(protocols.trusted_monitor_defer_percentages, thresholds))} (pct → threshold)")
+            protocols.trusted_monitor_defer_thresholds = thresholds
+
+        if protocols.trusted_monitor_edit_percentages is not None:
+            thresholds = percentages_to_thresholds(trusted_honest, protocols.trusted_monitor_edit_percentages)
+            print(f"Trusted monitor edit:  {dict(zip(protocols.trusted_monitor_edit_percentages, thresholds))} (pct → threshold)")
+            protocols.trusted_monitor_edit_thresholds = thresholds
+
+    if needs_untrusted:
+        untrusted_honest = df.loc[
+            (df["protocol_name"] == "untrusted_monitor_defer") & (df["eval_mode"] == "honest"),
+            "score_max_suspicion_scorer",
+        ].dropna()
+
+        thresholds = percentages_to_thresholds(untrusted_honest, protocols.untrusted_monitor_defer_percentages)
+        print(f"Untrusted monitor defer: {dict(zip(protocols.untrusted_monitor_defer_percentages, thresholds))} (pct → threshold)")
+        protocols.untrusted_monitor_defer_thresholds = thresholds
+
+    print("===== Calibration Complete =====\n")
+    return config
+
+
 def create_evaluation_tasks(
     eval_config: ControlEvalConfig,
     setting: AppsSetting,
@@ -430,18 +584,6 @@ def main(config_path: Path) -> None:
     else:
         print(f"Logging to {effective_log_dir}")
 
-    # Print configuration summary
-    print(f"Running with audit budget: {config.evaluation.audit_budget}%")
-    print(f"Trusted monitor defer thresholds: {config.protocols.trusted_monitor_defer_thresholds}")
-    print(f"Untrusted monitor defer thresholds: {config.protocols.untrusted_monitor_defer_thresholds}")
-    print(f"Trusted monitor edit thresholds: {config.protocols.trusted_monitor_edit_thresholds}")
-    print(f"Trusted model: {config.models.trusted}")
-    print(f"Untrusted model: {config.models.untrusted}")
-    print(f"Sandbox: max_sandboxes={config.sandbox.max_sandboxes}, "
-          f"max_tasks={config.sandbox.max_tasks}, "
-          f"max_samples={config.sandbox.max_samples}")
-    print(f"Monitor: num_samples={config.monitor.num_samples}")
-
     # Ensure log directory exists and copy config file
     log_dir_path = Path(effective_log_dir)
     log_dir_path.mkdir(parents=True, exist_ok=True)
@@ -454,6 +596,21 @@ def main(config_path: Path) -> None:
         honest_prompt_path=config.prompts.honest,
         monitor_prompt_path=config.prompts.monitor,
     )
+
+    # Calibrate thresholds from percentages if needed
+    config = calibrate_thresholds(config, effective_log_dir, prompts)
+
+    # Print configuration summary (after calibration so thresholds are resolved)
+    print(f"Running with audit budget: {config.evaluation.audit_budget:.0%}")
+    print(f"Trusted monitor defer thresholds: {config.protocols.trusted_monitor_defer_thresholds}")
+    print(f"Untrusted monitor defer thresholds: {config.protocols.untrusted_monitor_defer_thresholds}")
+    print(f"Trusted monitor edit thresholds: {config.protocols.trusted_monitor_edit_thresholds}")
+    print(f"Trusted model: {config.models.trusted}")
+    print(f"Untrusted model: {config.models.untrusted}")
+    print(f"Sandbox: max_sandboxes={config.sandbox.max_sandboxes}, "
+          f"max_tasks={config.sandbox.max_tasks}, "
+          f"max_samples={config.sandbox.max_samples}")
+    print(f"Monitor: num_samples={config.monitor.num_samples}")
 
     # Run evaluation
     raw_df, results_df, plot_path = run_evaluation(

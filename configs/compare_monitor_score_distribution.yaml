@@ -7,7 +7,7 @@
 
 evaluation:
   limit: 300
-  audit_budget: 2.0
+  audit_budget: 0.02  # 0.02 = 2%
   log_dir: null # Auto-generated if null
 
 models:

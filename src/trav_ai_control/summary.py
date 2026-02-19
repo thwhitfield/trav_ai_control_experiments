@@ -510,7 +510,7 @@ def generate_html_report(
             )
         if config.audit_budget is not None:
             config_rows.append(
-                f"<tr><td>Audit Budget</td><td>{config.audit_budget:.1f}%</td></tr>"
+                f"<tr><td>Audit Budget</td><td>{config.audit_budget:.0%}</td></tr>"
             )
         # Sandbox settings
         sandbox_parts = []
@@ -953,7 +953,7 @@ def generate_markdown_report(
         if config.limit is not None:
             lines.append(f"| Sample Limit | {config.limit} |")
         if config.audit_budget is not None:
-            lines.append(f"| Audit Budget | {config.audit_budget:.1f}% |")
+            lines.append(f"| Audit Budget | {config.audit_budget:.0%} |")
         # Sandbox settings
         sandbox_parts = []
         if config.max_sandboxes is not None:

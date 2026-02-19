@@ -91,7 +91,7 @@ def plot_monitoring_score_distribution(
     Args:
         df: DataFrame with protocol_name, eval_mode, score_max_suspicion_scorer columns.
         audit_budget: If provided, draws a dotted line at the suspicion threshold
-                      corresponding to this audit budget percentage (e.g. 2.0 for 2%).
+                      corresponding to this audit budget as a decimal (e.g. 0.02 for 2%).
     """
     monitor_configs = [
         ("trusted_monitor_defer", "Trusted Monitoring"),
@@ -123,13 +123,13 @@ def plot_monitoring_score_distribution(
 
         # Draw audit budget threshold line
         if audit_budget is not None and len(honest) > 0:
-            threshold = np.percentile(honest, 100 - audit_budget)
+            threshold = np.percentile(honest, (1.0 - audit_budget) * 100)
             ax.axvline(
                 threshold,
                 color="black",
                 linestyle="--",
                 alpha=0.7,
-                label=f"Audit threshold ({audit_budget}%)",
+                label=f"Audit threshold ({audit_budget:.0%})",
             )
 
         ax.legend()
@@ -156,7 +156,7 @@ def plot_monitor_comparison(
         runs: List of (label, df) tuples. Each df should have columns
               protocol_name, eval_mode, and score_max_suspicion_scorer.
         audit_budget: If provided, draws a dotted line at the suspicion threshold
-                      corresponding to this audit budget percentage (e.g. 2.0 for 2%).
+                      corresponding to this audit budget as a decimal (e.g. 0.02 for 2%).
 
     Returns:
         The matplotlib figure object.
@@ -195,13 +195,13 @@ def plot_monitor_comparison(
             )
 
             if audit_budget is not None and len(honest) > 0:
-                threshold = np.percentile(honest, 100 - audit_budget)
+                threshold = np.percentile(honest, (1.0 - audit_budget) * 100)
                 ax.axvline(
                     threshold,
                     color="black",
                     linestyle="--",
                     alpha=0.7,
-                    label=f"Audit threshold ({audit_budget}%)",
+                    label=f"Audit threshold ({audit_budget:.0%})",
                 )
 
             ax.legend()
