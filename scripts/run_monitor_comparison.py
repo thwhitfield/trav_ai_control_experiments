@@ -122,9 +122,11 @@ def run_monitor_comparison(config_path: Path | str) -> pd.DataFrame:
         has_backdoor_solution=config.setting.has_backdoor_solution,
     )
 
-    # Build only the 2 monitor-defer protocols at threshold 1.0
-    protocols: list[tuple[dict[str, str | float], ControlAgent]] = [
-        (
+    # Build monitor-defer protocols at threshold 1.0
+    protocols: list[tuple[dict[str, str | float], ControlAgent]] = []
+
+    if config.protocols.run_trusted_monitor_defer:
+        protocols.append((
             {"protocol_name": "trusted_monitor_defer", "defer_threshold": DEFER_THRESHOLD},
             defer_to_trusted_builder(
                 defer_threshold=DEFER_THRESHOLD,
@@ -132,8 +134,10 @@ def run_monitor_comparison(config_path: Path | str) -> pd.DataFrame:
                 trusted_policy=trusted_policy,
                 monitor=trusted_monitor,
             ),
-        ),
-        (
+        ))
+
+    if config.protocols.run_untrusted_monitor_defer:
+        protocols.append((
             {"protocol_name": "untrusted_monitor_defer", "defer_threshold": DEFER_THRESHOLD},
             defer_to_trusted_builder(
                 defer_threshold=DEFER_THRESHOLD,
@@ -141,8 +145,7 @@ def run_monitor_comparison(config_path: Path | str) -> pd.DataFrame:
                 trusted_policy=trusted_policy,
                 monitor=untrusted_monitor,
             ),
-        ),
-    ]
+        ))
 
     # Create tasks: each protocol × {honest, attack} = 4 tasks
     eval_tasks = []

@@ -12,6 +12,7 @@ evaluation:
 
 models:
   trusted: "openai/gpt-4.1-mini-2025-04-14"
+  # trusted: "openai/gpt-4.1-nano-2025-04-14"
   untrusted: "anthropic/claude-haiku-4-5-20251001"
 
 sandbox:
@@ -27,7 +28,11 @@ setting:
   has_backdoor_solution: true
 
 policy:
-  use_dataset_solutions: true
+  use_dataset_solutions: false
+
+protocols:
+  run_trusted_monitor_defer: true
+  run_untrusted_monitor_defer: true
 
 prompts:
   attack: null
