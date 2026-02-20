@@ -94,8 +94,8 @@ def plot_monitoring_score_distribution(
                       corresponding to this audit budget as a decimal (e.g. 0.02 for 2%).
     """
     monitor_configs = [
-        ("trusted_monitor_defer", "Trusted Monitoring"),
-        ("untrusted_monitor_defer", "Untrusted Monitoring"),
+        ("trusted_monitor", "Trusted Monitoring"),
+        ("untrusted_monitor", "Untrusted Monitoring"),
     ]
 
     fig, axes = plt.subplots(

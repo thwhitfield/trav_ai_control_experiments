@@ -16,6 +16,7 @@ Usage:
 import argparse
 import shutil
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -239,6 +240,8 @@ def main(config_path: Path) -> None:
     Args:
         config_path: Path to YAML configuration file.
     """
+    start_time = time.monotonic()
+
     config = load_decomposed_config(config_path)
 
     # Generate log directory
@@ -323,7 +326,17 @@ def main(config_path: Path) -> None:
             setting,
         )
 
-    print(f"\nDecomposed evaluation complete!")
+    elapsed = time.monotonic() - start_time
+    hours, remainder = divmod(int(elapsed), 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours > 0:
+        elapsed_str = f"{hours}h {minutes}m {secs}s"
+    elif minutes > 0:
+        elapsed_str = f"{minutes}m {secs}s"
+    else:
+        elapsed_str = f"{secs}s"
+
+    print(f"\nDecomposed evaluation complete! (Wall clock time: {elapsed_str})")
     print(f"Results saved to: {effective_log_dir}")
 
 

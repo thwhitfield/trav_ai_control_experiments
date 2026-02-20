@@ -11,6 +11,7 @@ Usage:
 import argparse
 import shutil
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -47,6 +48,17 @@ from trav_ai_control.config import (
 )
 from trav_ai_control.metrics import create_protocol_results_dataframe
 from trav_ai_control.plotting import plot_safety_vs_usefulness_by_protocol
+
+def _format_elapsed(seconds: float) -> str:
+    """Format elapsed seconds as a human-readable string (e.g., '1h 23m 45s')."""
+    hours, remainder = divmod(int(seconds), 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours}h {minutes}m {secs}s"
+    elif minutes > 0:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 ATTACK_PROMPT_PATH = PROMPTS_DIR / "attack_system_prompt.txt"
@@ -573,6 +585,8 @@ def main(config_path: Path) -> None:
     Args:
         config_path: Path to YAML configuration file.
     """
+    start_time = time.monotonic()
+
     # Load config from file
     config = load_config(config_path)
 
@@ -637,22 +651,25 @@ def main(config_path: Path) -> None:
         load_run_config,
     )
 
+    elapsed_seconds = time.monotonic() - start_time
+
     summaries = analyze_for_html(log_dir_path)
     run_config = load_run_config(log_dir_path)
 
-    html = generate_html_report(log_dir_path, summaries, run_config)
+    html = generate_html_report(log_dir_path, summaries, run_config, elapsed_seconds=elapsed_seconds)
     html_path = log_dir_path / "summary.html"
     with open(html_path, "w") as f:
         f.write(html)
     print(f"Generated HTML summary: {html_path}")
 
-    markdown = generate_markdown_report(log_dir_path, summaries, run_config)
+    markdown = generate_markdown_report(log_dir_path, summaries, run_config, elapsed_seconds=elapsed_seconds)
     md_path = log_dir_path / "summary.md"
     with open(md_path, "w") as f:
         f.write(markdown)
     print(f"Generated Markdown summary: {md_path}")
 
-    print("\nEvaluation complete!")
+    elapsed_str = _format_elapsed(elapsed_seconds)
+    print(f"\nEvaluation complete! (Wall clock time: {elapsed_str})")
     print(f"Total samples: {len(raw_df)}")
     if len(raw_df) > 0:
         print(f"Protocols evaluated: {sorted(raw_df['protocol_name'].unique())}")

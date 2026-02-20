@@ -425,7 +425,8 @@ def format_cost(cost: float | None) -> str:
 
 
 def generate_html_report(
-    log_dir: Path, summaries: list[TaskSummary], config: RunConfig | None = None
+    log_dir: Path, summaries: list[TaskSummary], config: RunConfig | None = None,
+    elapsed_seconds: float | None = None,
 ) -> str:
     """Generate the HTML report."""
     plot_base64 = get_plot_base64(log_dir)
@@ -828,6 +829,10 @@ def generate_html_report(
                 <div class="card-value">{format_duration(total_duration)}</div>
             </div>
             <div class="card">
+                <div class="card-label">Wall Clock Time</div>
+                <div class="card-value">{format_duration(elapsed_seconds) if elapsed_seconds is not None else "-"}</div>
+            </div>
+            <div class="card">
                 <div class="card-label">Trusted Tokens</div>
                 <div class="card-value">{format_tokens(total_trusted_input + total_trusted_output)}</div>
             </div>
@@ -890,7 +895,8 @@ def generate_html_report(
 
 
 def generate_markdown_report(
-    log_dir: Path, summaries: list[TaskSummary], config: RunConfig | None = None
+    log_dir: Path, summaries: list[TaskSummary], config: RunConfig | None = None,
+    elapsed_seconds: float | None = None,
 ) -> str:
     """Generate the Markdown report."""
     # Calculate totals
@@ -929,6 +935,8 @@ def generate_markdown_report(
     lines.append(f"| Total Tasks | {len(summaries)} |")
     lines.append(f"| Total Samples | {total_samples:,} |")
     lines.append(f"| Total Duration | {format_duration(total_duration)} |")
+    if elapsed_seconds is not None:
+        lines.append(f"| Wall Clock Time | {format_duration(elapsed_seconds)} |")
     lines.append(
         f"| Trusted Tokens | {format_tokens(total_trusted_input + total_trusted_output)} |"
     )

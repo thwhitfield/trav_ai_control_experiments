@@ -12,6 +12,7 @@ Usage:
 import argparse
 import shutil
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -211,6 +212,18 @@ if __name__ == "__main__":
         print(f"Error: Config file not found: {args.config}", file=sys.stderr)
         sys.exit(1)
 
+    start_time = time.monotonic()
     df = run_monitor_comparison(args.config)
-    print(f"\nDone. {len(df)} samples collected.")
+
+    elapsed = time.monotonic() - start_time
+    hours, remainder = divmod(int(elapsed), 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours > 0:
+        elapsed_str = f"{hours}h {minutes}m {secs}s"
+    elif minutes > 0:
+        elapsed_str = f"{minutes}m {secs}s"
+    else:
+        elapsed_str = f"{secs}s"
+
+    print(f"\nDone. {len(df)} samples collected. (Wall clock time: {elapsed_str})")
     print(f"Protocols: {sorted(df['protocol_name'].unique())}")
