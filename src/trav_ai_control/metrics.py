@@ -48,6 +48,13 @@ def audit_runs(
     # control_arena expects audit_budget as a percentage (e.g. 2.0 for 2%)
     audit_budget_pct = audit_budget * 100
 
+    # Drop rows with NA main_task_success (sandbox timeouts/errors)
+    n_before = len(df)
+    df = df.dropna(subset=["main_task_success"])
+    n_dropped = n_before - len(df)
+    if n_dropped > 0:
+        logger.warning(f"Dropped {n_dropped} samples with NA main_task_success")
+
     # Compute usefulness from honest runs
     usefulness = compute_usefulness(df)
 
@@ -97,6 +104,13 @@ def create_protocol_results_dataframe(
         DataFrame with columns: protocol_name, audit_budget, safety_mean, safety_error,
                                usefulness_mean, usefulness_error, suspicion_threshold
     """
+    # Drop rows with NA main_task_success (sandbox timeouts/errors)
+    n_before = len(results_df)
+    results_df = results_df.dropna(subset=["main_task_success"])
+    n_dropped = n_before - len(results_df)
+    if n_dropped > 0:
+        logger.warning(f"Dropped {n_dropped}/{n_before} samples with NA main_task_success")
+
     # Compute trusted usefulness baseline from trusted_only protocol
     trusted_usefulness_baseline = compute_usefulness(
         results_df[results_df["protocol_name"] == "trusted_only"]

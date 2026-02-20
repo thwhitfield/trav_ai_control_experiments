@@ -285,7 +285,7 @@ def calibrate_thresholds(
     print("\n===== Calibration Phase =====")
     print("Running minimal evals to determine thresholds from defer percentages...")
 
-    calibration_log_dir = str(Path(log_dir) / "calibration")
+    calibration_log_dir = str(Path(log_dir).parent / (Path(log_dir).name + "_calibration"))
 
     # Create policies and monitors
     untrusted_policy, trusted_policy, _ = create_policies(
@@ -522,6 +522,7 @@ def run_evaluation(
     # ======= Run Evaluations =======
     _ = eval_set(
         tasks=eval_tasks,
+        log_dir_allow_dirty=True,
         **eval_config.eval_args(),
     )
 
