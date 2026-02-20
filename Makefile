@@ -52,6 +52,9 @@ run:  ## Run with config file (use CONFIG=path/to/config.yaml)
 run-paper:  ## Run AI Control paper replication with default config
 	uv run python scripts/ai_control_paper.py configs/ai_control_paper.yaml
 
+run-paper2:  ## Run decomposed AI Control evaluation
+	uv run python scripts/ai_control_paper2.py configs/ai_control_paper2.yaml
+
 run-monitor-comparison:  ## Run monitor score distribution comparison (use CONFIG=path/to/config.yaml)
 	uv run python scripts/run_monitor_comparison.py $(or $(MONITOR_CONFIG),configs/compare_monitor_score_distribution.yaml)
 

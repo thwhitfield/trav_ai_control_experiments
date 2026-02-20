@@ -147,6 +147,43 @@ class ExperimentConfig:
     plot: PlotConfig = field(default_factory=PlotConfig)
 
 
+@dataclass
+class PhaseConfig:
+    """Toggle individual phases of the decomposed evaluation."""
+
+    run_untrusted_responses: bool = True
+    run_post_hoc_monitoring: bool = True
+    run_trusted_responses: bool = True
+    run_trusted_editing: bool = True
+
+
+@dataclass
+class DecomposedMonitorConfig:
+    """Monitor configuration for decomposed experiment."""
+
+    num_samples: int = 3
+    run_trusted_monitor: bool = True
+    run_untrusted_monitor: bool = True
+
+
+@dataclass
+class DecomposedExperimentConfig:
+    """Root configuration for decomposed AI Control evaluation."""
+
+    experiment: ExperimentMetadata = field(default_factory=ExperimentMetadata)
+    evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
+    models: ModelConfig = field(default_factory=ModelConfig)
+    sandbox: SandboxConfig = field(default_factory=SandboxConfig)
+    monitor: DecomposedMonitorConfig = field(
+        default_factory=DecomposedMonitorConfig
+    )
+    setting: SettingConfig = field(default_factory=SettingConfig)
+    policy: PolicyConfig = field(default_factory=PolicyConfig)
+    phases: PhaseConfig = field(default_factory=PhaseConfig)
+    prompts: PromptPaths = field(default_factory=PromptPaths)
+    cache: CacheConfig = field(default_factory=CacheConfig)
+
+
 def load_config(config_path: Path | str | None) -> ExperimentConfig:
     """Load configuration from YAML file.
 
@@ -217,4 +254,45 @@ def _parse_prompt_paths(data: dict[str, Any]) -> PromptPaths:
         honest=Path(data["honest"]) if data.get("honest") else None,
         monitor=Path(data["monitor"]) if data.get("monitor") else None,
         edit=Path(data["edit"]) if data.get("edit") else None,
+    )
+
+
+def load_decomposed_config(
+    config_path: Path | str | None,
+) -> DecomposedExperimentConfig:
+    """Load configuration for decomposed AI Control evaluation.
+
+    Args:
+        config_path: Path to YAML config file. If None, returns defaults.
+
+    Returns:
+        DecomposedExperimentConfig with loaded values or defaults.
+    """
+    if config_path is None:
+        return DecomposedExperimentConfig()
+
+    path = Path(config_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Config file not found: {path}")
+
+    with open(path) as f:
+        data = yaml.safe_load(f) or {}
+
+    return DecomposedExperimentConfig(
+        experiment=_parse_dataclass(
+            ExperimentMetadata, data.get("experiment", {})
+        ),
+        evaluation=_parse_dataclass(
+            EvaluationConfig, data.get("evaluation", {})
+        ),
+        models=_parse_dataclass(ModelConfig, data.get("models", {})),
+        sandbox=_parse_dataclass(SandboxConfig, data.get("sandbox", {})),
+        monitor=_parse_dataclass(
+            DecomposedMonitorConfig, data.get("monitor", {})
+        ),
+        setting=_parse_dataclass(SettingConfig, data.get("setting", {})),
+        policy=_parse_dataclass(PolicyConfig, data.get("policy", {})),
+        phases=_parse_dataclass(PhaseConfig, data.get("phases", {})),
+        prompts=_parse_prompt_paths(data.get("prompts", {})),
+        cache=_parse_dataclass(CacheConfig, data.get("cache", {})),
     )
