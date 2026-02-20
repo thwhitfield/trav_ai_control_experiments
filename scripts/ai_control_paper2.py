@@ -14,19 +14,14 @@ Usage:
 """
 
 import argparse
-import asyncio
 import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
 
 from control_arena import EvalMode
-from control_arena.eval import (
-    ControlEvalConfig,
-    evaluate_monitors_post_hoc,
-    get_control_task,
-)
-from control_arena.micro_protocol import trusted_editing_builder
+from control_arena.eval import ControlEvalConfig, get_control_task
+from control_arena.micro_protocol import defer_to_trusted_builder, trusted_editing_builder
 from control_arena.scorers import max_suspicion_scorer
 from control_arena.settings.apps.apps_setting import AppsSetting
 from inspect_ai import eval_set
@@ -99,43 +94,63 @@ def run_phase1(
 def run_phase2(
     config: DecomposedExperimentConfig,
     log_dir: Path,
+    prompts: PromptLoader,
+    untrusted_policy,
+    trusted_policy,
     trusted_monitor,
     untrusted_monitor,
+    setting: AppsSetting,
 ) -> None:
-    """Phase 2: Run post-hoc monitoring on Phase 1 eval logs."""
-    print("\n===== Phase 2: Post-hoc Monitoring =====")
+    """Phase 2: Generate monitoring scores for untrusted responses.
 
-    phase1_dir = log_dir / "phase1_untrusted"
-    phase2_dir = log_dir / "phase2_monitoring"
+    Runs defer_to_trusted_builder at threshold 1.0 (never defers) so the
+    monitor scores every sample. With use_dataset_solutions=true, the
+    untrusted responses are deterministic and match Phase 1.
+    """
+    print("\n===== Phase 2: Monitoring Scores =====")
 
-    eval_files = sorted(phase1_dir.glob("*.eval"))
-    if not eval_files:
-        print("WARNING: No eval files found in Phase 1 directory. Skipping.")
-        return
+    phase_log_dir = str(log_dir / "phase2_monitoring")
+    eval_config = make_eval_config(config, prompts, phase_log_dir)
 
-    monitors = []
+    MONITOR_THRESHOLD = 1.0  # Never defers; monitor still scores every sample
+
+    monitor_configs = []
     if config.monitor.run_trusted_monitor:
-        monitors.append(trusted_monitor)
+        monitor_configs.append(("trusted_monitor", trusted_monitor))
     if config.monitor.run_untrusted_monitor:
-        monitors.append(untrusted_monitor)
+        monitor_configs.append(("untrusted_monitor", untrusted_monitor))
 
-    if not monitors:
+    if not monitor_configs:
         print("No monitors configured. Skipping Phase 2.")
         return
 
-    log_paths = [str(f) for f in eval_files]
+    tasks = []
+    for monitor_name, monitor in monitor_configs:
+        for mode in [EvalMode.HONEST, EvalMode.ATTACK]:
+            task_name = f"{monitor_name}_{mode.value}"
+            tasks.append(
+                get_control_task(
+                    setting=setting,
+                    micro_protocol=defer_to_trusted_builder(
+                        defer_threshold=MONITOR_THRESHOLD,
+                        untrusted_policy=untrusted_policy,
+                        trusted_policy=trusted_policy,
+                        monitor=monitor,
+                    ),
+                    mode=mode,
+                    eval_config=eval_config,
+                    monitoring_scorers=[max_suspicion_scorer()],
+                    metadata={
+                        "phase": "monitoring",
+                        "protocol_name": monitor_name,
+                        "defer_threshold": MONITOR_THRESHOLD,
+                    },
+                    task_name=task_name,
+                )
+            )
 
-    print(
-        f"Running {len(monitors)} monitor(s) on {len(eval_files)} eval file(s)..."
-    )
-    asyncio.run(
-        evaluate_monitors_post_hoc(
-            log_paths=log_paths,
-            monitors=monitors,
-            output_dir=str(phase2_dir),
-            verbose=True,
-        )
-    )
+    print(f"Running {len(tasks)} Phase 2 tasks...")
+    eval_set(tasks=tasks, **eval_config.eval_args())
     print("Phase 2 complete.")
 
 
@@ -283,7 +298,16 @@ def main(config_path: Path) -> None:
         run_phase1(config, log_dir, prompts, untrusted_policy, setting)
 
     if config.phases.run_post_hoc_monitoring:
-        run_phase2(config, log_dir, trusted_monitor, untrusted_monitor)
+        run_phase2(
+            config,
+            log_dir,
+            prompts,
+            untrusted_policy,
+            trusted_policy,
+            trusted_monitor,
+            untrusted_monitor,
+            setting,
+        )
 
     if config.phases.run_trusted_responses:
         run_phase3(config, log_dir, prompts, trusted_policy, setting)
